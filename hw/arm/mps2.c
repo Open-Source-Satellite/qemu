@@ -222,25 +222,170 @@ static void mps2_common_init(MachineState *machine)
                              OBJECT(system_memory), &error_abort);
     sysbus_realize(SYS_BUS_DEVICE(&mms->armv7m), &error_fatal);
 
-    create_unimplemented_device("zbtsmram mirror", 0x00400000, 0x00400000);
-    create_unimplemented_device("RESERVED 1", 0x00800000, 0x00800000);
-    create_unimplemented_device("Block RAM", 0x01000000, 0x00010000);
-    create_unimplemented_device("RESERVED 2", 0x01010000, 0x1EFF0000);
-    create_unimplemented_device("RESERVED 3", 0x20800000, 0x00800000);
-    create_unimplemented_device("PSRAM", 0x21000000, 0x01000000);
+
+    // Adding in devices for STM32H753ZI - there are loads
+    create_unimplemented_device("TIM2",        0x40000000, 0x00000400);
+    create_unimplemented_device("TIM3",        0x40000400, 0x00000400);
+    create_unimplemented_device("TIM4",        0x40000800, 0x00000400);
+    create_unimplemented_device("TIM5",        0x40000C00, 0x00000400);
+    create_unimplemented_device("TIM6",        0x40001000, 0x00000400);
+    create_unimplemented_device("TIM7",        0x40001400, 0x00000400);
+    create_unimplemented_device("TIM12",       0x40001800, 0x00000400);
+    create_unimplemented_device("TIM13",       0x40001C00, 0x00000400);
+    create_unimplemented_device("TIM14",       0x40002000, 0x00000400);
+    create_unimplemented_device("LPTIM1",      0x40002400, 0x00000400);
+    create_unimplemented_device("RESERVED1",   0x40002800, 0x00001000);
+    create_unimplemented_device("SPI2",        0x40003800, 0x00000400);
+    create_unimplemented_device("SPI3",        0x40003C00, 0x00000400);
+    create_unimplemented_device("SPDIFRX1",    0x40004000, 0x00000400);
+    create_unimplemented_device("USART2",      0x40004400, 0x00000400);
+    create_unimplemented_device("USART3",      0x40004800, 0x00000400);
+    create_unimplemented_device("USART4",      0x40004C00, 0x00000400);
+    create_unimplemented_device("USART5",      0x40005000, 0x00000400);
+    create_unimplemented_device("I2C1",        0x40005400, 0x00000400);
+    create_unimplemented_device("I2C2",        0x40005800, 0x00000400);
+    create_unimplemented_device("I2C3",        0x40005C00, 0x00000400);
+    create_unimplemented_device("RESERVED2",   0x40006000, 0x00000C00);
+    create_unimplemented_device("HDMI-CEC",    0x40006C00, 0x00000400);
+    create_unimplemented_device("RESERVED3",   0x40007000, 0x00000400);
+    create_unimplemented_device("DAC1",        0x40007400, 0x00000400);
+    create_unimplemented_device("UART7",       0x40007800, 0x00000400);
+    create_unimplemented_device("UART8",       0x40007C00, 0x00000400);
+    create_unimplemented_device("RESERVED4",   0x40008000, 0x00000400);
+    create_unimplemented_device("CRS",         0x40008400, 0x00000400);
+    create_unimplemented_device("SWPMI",       0x40008800, 0x00000400);
+    create_unimplemented_device("RESERVED5",   0x40008C00, 0x00000400);
+    create_unimplemented_device("OPAMP",       0x40009000, 0x00000400);
+    create_unimplemented_device("MDIOS",       0x40009400, 0x00000400);
+    create_unimplemented_device("FDCAN1",      0x4000A000, 0x00000400);
+    create_unimplemented_device("FDCAN2",      0x4000A400, 0x00000400);
+    create_unimplemented_device("CAN CCU",     0x4000A800, 0x00000400);
+    create_unimplemented_device("CAN Msg RAM", 0x4000AC00, 0x00002800);
+    create_unimplemented_device("RESERVED6",   0x4000D400, 0x00002C00);
+    create_unimplemented_device("TIM1",        0x40010000, 0x00000400);
+    create_unimplemented_device("TIM8",        0x40010400, 0x00000400);
+    create_unimplemented_device("RESERVED7",   0x40010800, 0x00000800);
+    create_unimplemented_device("USART1",      0x40011000, 0x00000400);
+    create_unimplemented_device("USART6",      0x40011400, 0x00000400);
+    create_unimplemented_device("RESERVED8",   0x40011800, 0x00001800);
+    create_unimplemented_device("SPI1 12S1",   0x40013000, 0x00000400);
+    create_unimplemented_device("SPI4",        0x40013400, 0x00000400);
+    create_unimplemented_device("RESERVED9",   0x40013800, 0x00000800); 
+    create_unimplemented_device("TIM15",       0x40014000, 0x00000400);
+    create_unimplemented_device("TIM16",       0x40014400, 0x00000400);
+    create_unimplemented_device("TIM17",       0x40014800, 0x00000400);
+    create_unimplemented_device("RESERVED10",  0x40014C00, 0x00000400);
+    create_unimplemented_device("SPI5",        0x40015000, 0x00000400);
+    create_unimplemented_device("RESERVED10",  0x40015400, 0x00000400);
+    create_unimplemented_device("SAI1",        0x40015800, 0x00000400);
+    create_unimplemented_device("SAI2",        0x40015C00, 0x00000400);
+    create_unimplemented_device("SAI3",        0x40016000, 0x00000400);
+    create_unimplemented_device("RESERVED11",  0x40016400, 0x00000C00);
+    create_unimplemented_device("DFSDM1",      0x40017000, 0x00000400);
+    create_unimplemented_device("HRTIM",       0x40017400, 0x00000400);
+    create_unimplemented_device("RESERVED12",  0x40017800, 0x00007800);
+    create_unimplemented_device("DMA1",        0x40020000, 0x00000400);
+    create_unimplemented_device("DMA2",        0x40020400, 0x00000400);
+    create_unimplemented_device("DMAMUX1",     0x40020800, 0x00000400);
+    create_unimplemented_device("RESERVED13",  0x40020C00, 0x00002400);
+    create_unimplemented_device("ADC1-ADC2",   0x40022000, 0x00000400);
+    create_unimplemented_device("RESERVED14",  0x40022400, 0x00005C00);
+    create_unimplemented_device("ETHERNET MAC",0x40028000, 0x00001400);
+    create_unimplemented_device("RESERVED15",  0x40029400, 0x0001C600);
+    create_unimplemented_device("USB1 OTG_HS", 0x40040000, 0x00040000);
+    create_unimplemented_device("USB2 OTG_FS", 0x40080000, 0x00040000);
+    create_unimplemented_device("RESERVED16",  0x400C0000, 0x07F60000);
+    create_unimplemented_device("DCMI",        0x48020000, 0x00000400);
+    create_unimplemented_device("RESERVED17",  0x48020400, 0x00000C00);
+    create_unimplemented_device("CRYPTO",      0x48021000, 0x00000400);
+    create_unimplemented_device("HASH",        0x48021400, 0x00000400);
+    create_unimplemented_device("RNG",         0x48021800, 0x00000400);
+    create_unimplemented_device("RESERVED18",  0x48021C00, 0x00000800);
+    create_unimplemented_device("SDMMC2",      0x48022400, 0x00000400);
+    create_unimplemented_device("SDMMC2 DELAY",0x48022800, 0x00000400);
+    create_unimplemented_device("RESERVED19",  0x48022C00, 0x00000400);
+    create_unimplemented_device("RAMECC2",     0x48023000, 0x00000400);
+    create_unimplemented_device("RESERVED20",  0x48023000, 0x07FDDC00);
+    create_unimplemented_device("LTDC",        0x50001000, 0x00001000);
+    create_unimplemented_device("RESERVED21",  0x50002000, 0x00001000);
+    create_unimplemented_device("WWDG1",       0x50003000, 0x00001000);
+    create_unimplemented_device("RESERVED21",  0x50004000, 0x00FFC000);
+    create_unimplemented_device("GPV",         0x51000000, 0x00100000);
+    create_unimplemented_device("MDMA",        0x52000000, 0x00001000);
+    create_unimplemented_device("DMA2D",       0x52001000, 0x00001000);
+    create_unimplemented_device("Flash reg",   0x52002000, 0x00001000);
+    create_unimplemented_device("JPEG",        0x52003000, 0x00001000);
+    create_unimplemented_device("FMC",         0x52004000, 0x00001000);
+    create_unimplemented_device("QUADSPI",     0x52005000, 0x00001000);
+    create_unimplemented_device("QUADSPI DLY", 0x52006000, 0x00001000);
+    create_unimplemented_device("SDMMC1",      0x52007000, 0x00001000);
+    create_unimplemented_device("SDMMC1 DLY",  0x52008000, 0x00001000);
+    create_unimplemented_device("RAMECC1",     0x52009000, 0x00000400);
+    create_unimplemented_device("RESERVED22",  0x52009400, 0x05FF6C00);
+    create_unimplemented_device("EXTI",        0x58000000, 0x00000400);
+    create_unimplemented_device("SYSCFG",      0x58000400, 0x00000400);
+    create_unimplemented_device("LPUART1",     0x58000C00, 0x00000400);
+    create_unimplemented_device("RESERVED23",  0x58001000, 0x00000400);
+    create_unimplemented_device("SPI6",        0x58001400, 0x00000400);
+    create_unimplemented_device("RESERVED24",  0x58001800, 0x00000400);
+    create_unimplemented_device("I2C4",        0x58001C00, 0x00000400);
+    create_unimplemented_device("RESERVED25",  0x58002000, 0x00000400);
+    create_unimplemented_device("LPTIM2",      0x58002400, 0x00000400);
+    create_unimplemented_device("LPTIM3",      0x58002800, 0x00000400);
+    create_unimplemented_device("LPTIM4",      0x58002C00, 0x00000400);
+    create_unimplemented_device("LPTIM5",      0x58003000, 0x00000400);
+    create_unimplemented_device("RESERVED26",  0x58003400, 0x00000400);
+    create_unimplemented_device("COMP1-COMP2", 0x58003800, 0x00000400);
+    create_unimplemented_device("VREF",        0x58003C00, 0x00000400);
+    create_unimplemented_device("RTC & BKP",   0x58004000, 0x00000400);
+    create_unimplemented_device("RESERVED27",  0x58004400, 0x00000400);
+    create_unimplemented_device("IWDG1",       0x58004800, 0x00000400);
+    create_unimplemented_device("RESERVED28",  0x58004C00, 0x00000800);
+    create_unimplemented_device("SAI4",        0x58005400, 0x00000400);
+    create_unimplemented_device("RESERVED29",  0x58005800, 0x0001A800);
+    create_unimplemented_device("GPIOA",       0x58020000, 0x00000400);
+    create_unimplemented_device("GPIOB",       0x58020400, 0x00000400);
+    create_unimplemented_device("GPIOC",       0x58020800, 0x00000400);
+    create_unimplemented_device("GPIOD",       0x58020C00, 0x00000400);
+    create_unimplemented_device("GPIOE",       0x58021000, 0x00000400);
+    create_unimplemented_device("GPIOF",       0x58021400, 0x00000400);
+    create_unimplemented_device("GPIOG",       0x58021800, 0x00000400);
+    create_unimplemented_device("GPIOH",       0x58021C00, 0x00000400);
+    create_unimplemented_device("GPIOI",       0x58022000, 0x00000400);
+    create_unimplemented_device("GPIOJ",       0x58022400, 0x00000400);
+    create_unimplemented_device("GPIOK",       0x58022800, 0x00000400);
+    create_unimplemented_device("RESERVED30",  0x58022C00, 0x00001800);
+    create_unimplemented_device("RCC",         0x58024400, 0x00000400);
+    create_unimplemented_device("PWR",         0x58024800, 0x00000400);
+    create_unimplemented_device("CRC",         0x58024C00, 0x00000400);
+    create_unimplemented_device("RESERVED31",  0x58025000, 0x00000400);
+    create_unimplemented_device("BDMA",        0x58025400, 0x00000400);
+    create_unimplemented_device("DMA MUX2",    0x58025800, 0x00000400);
+    create_unimplemented_device("RESERVED32",  0x58025C00, 0x00000400);
+    create_unimplemented_device("ADC3",        0x58026000, 0x00000400);
+    create_unimplemented_device("HSEM",        0x58026400, 0x00000400);
+    create_unimplemented_device("RAM ECC 3",   0x58027000, 0x00000400);
+    
+    
+    //create_unimplemented_device("zbtsmram mirror", 0x00400000, 0x00400000);
+    //create_unimplemented_device("RESERVED 1", 0x00800000, 0x00800000);
+    //create_unimplemented_device("Block RAM", 0x01000000, 0x00010000);
+    //create_unimplemented_device("RESERVED 2", 0x01010000, 0x1EFF0000);
+    //create_unimplemented_device("RESERVED 3", 0x20800000, 0x00800000);
+    //create_unimplemented_device("PSRAM", 0x21000000, 0x01000000);
     /* These three ranges all cover multiple devices; we may implement
      * some of them below (in which case the real device takes precedence
      * over the unimplemented-region mapping).
      */
-    create_unimplemented_device("CMSDK APB peripheral region @0x40000000",
-                                0x40000000, 0x00010000);
-    create_unimplemented_device("CMSDK AHB peripheral region @0x40010000",
-                                0x40010000, 0x00010000);
-    create_unimplemented_device("Extra peripheral region @0x40020000",
-                                0x40020000, 0x00010000);
+    //create_unimplemented_device("CMSDK APB peripheral region @0x40000000",
+//                                0x40000000, 0x00010000);
+//create_unimplemented_device("CMSDK AHB peripheral region @0x40010000",
+    //                              0x40010000, 0x00010000);
+//create_unimplemented_device("Extra peripheral region @0x40020000",
+    //                          0x40020000, 0x00010000);
 
-    create_unimplemented_device("RESERVED 4", 0x40030000, 0x001D0000);
-    create_unimplemented_device("VGA", 0x41000000, 0x0200000);
+    //create_unimplemented_device("RESERVED 4", 0x40030000, 0x001D0000);
+    //create_unimplemented_device("VGA", 0x41000000, 0x0200000);
 
     switch (mmc->fpga_type) {
     case FPGA_AN385:
