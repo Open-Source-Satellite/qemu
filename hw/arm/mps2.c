@@ -27,6 +27,7 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qemu/cutils.h"
+#include "qemu/log.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "hw/arm/boot.h"
@@ -47,6 +48,10 @@
 #include "net/net.h"
 #include "hw/watchdog/cmsdk-apb-watchdog.h"
 #include "qom/object.h"
+#include "hw/char/stm32f2xx_usart.h"
+#include "hw/arm/stm32f7xx_pwr.h"
+
+#define STM_NUM_USARTS 6
 
 typedef enum MPS2FPGAType {
     FPGA_AN385,
@@ -83,6 +88,10 @@ struct MPS2MachineState {
     /* CMSDK APB subsystem */
     CMSDKAPBDualTimer dualtimer;
     CMSDKAPBWatchdog watchdog;
+
+    /* STM32 hardware */
+    STM32F2XXUsartState usart[STM_NUM_USARTS];
+    STM32F7XXPwrState   pwr;
 };
 
 #define TYPE_MPS2_MACHINE "mps2"
@@ -123,9 +132,10 @@ static void mps2_common_init(MachineState *machine)
     MPS2MachineClass *mmc = MPS2_MACHINE_GET_CLASS(machine);
     MemoryRegion *system_memory = get_system_memory();
     MachineClass *mc = MACHINE_GET_CLASS(machine);
-    DeviceState *armv7m, *sccdev;
+    DeviceState *armv7m, *sccdev, *usart, *pwr;
     int i;
-
+    SysBusDevice *busdev;
+    
     if (strcmp(machine->cpu_type, mc->default_cpu_type) != 0) {
         error_report("This board can only be used with CPU %s",
                      mc->default_cpu_type);
@@ -238,10 +248,11 @@ static void mps2_common_init(MachineState *machine)
     create_unimplemented_device("SPI2",        0x40003800, 0x00000400);
     create_unimplemented_device("SPI3",        0x40003C00, 0x00000400);
     create_unimplemented_device("SPDIFRX1",    0x40004000, 0x00000400);
-    create_unimplemented_device("USART2",      0x40004400, 0x00000400);
-    create_unimplemented_device("USART3",      0x40004800, 0x00000400);
-    create_unimplemented_device("USART4",      0x40004C00, 0x00000400);
-    create_unimplemented_device("USART5",      0x40005000, 0x00000400);
+    // PRM NOTE: USARTS are created as smulated devices lower down in this code.
+    //create_unimplemented_device("USART2",      0x40004400, 0x00000400);
+    //create_unimplemented_device("USART3",      0x40004800, 0x00000400);
+    //create_unimplemented_device("USART4",      0x40004C00, 0x00000400);
+    //create_unimplemented_device("USART5",      0x40005000, 0x00000400);
     create_unimplemented_device("I2C1",        0x40005400, 0x00000400);
     create_unimplemented_device("I2C2",        0x40005800, 0x00000400);
     create_unimplemented_device("I2C3",        0x40005C00, 0x00000400);
@@ -265,8 +276,9 @@ static void mps2_common_init(MachineState *machine)
     create_unimplemented_device("TIM1",        0x40010000, 0x00000400);
     create_unimplemented_device("TIM8",        0x40010400, 0x00000400);
     create_unimplemented_device("RESERVED7",   0x40010800, 0x00000800);
-    create_unimplemented_device("USART1",      0x40011000, 0x00000400);
-    create_unimplemented_device("USART6",      0x40011400, 0x00000400);
+    // PRM NOTE: USARTS are created as smulated devices lower down in this code.
+    //create_unimplemented_device("USART1",      0x40011000, 0x00000400);
+    //create_unimplemented_device("USART6",      0x40011400, 0x00000400);
     create_unimplemented_device("RESERVED8",   0x40011800, 0x00001800);
     create_unimplemented_device("SPI1 12S1",   0x40013000, 0x00000400);
     create_unimplemented_device("SPI4",        0x40013400, 0x00000400);
@@ -356,7 +368,8 @@ static void mps2_common_init(MachineState *machine)
     create_unimplemented_device("GPIOK",       0x58022800, 0x00000400);
     create_unimplemented_device("RESERVED30",  0x58022C00, 0x00001800);
     create_unimplemented_device("RCC",         0x58024400, 0x00000400);
-    create_unimplemented_device("PWR",         0x58024800, 0x00000400);
+    // PRM NOTE: emulated below
+    //create_unimplemented_device("PWR",         0x58024800, 0x00000400);
     create_unimplemented_device("CRC",         0x58024C00, 0x00000400);
     create_unimplemented_device("RESERVED31",  0x58025000, 0x00000400);
     create_unimplemented_device("BDMA",        0x58025400, 0x00000400);
@@ -366,63 +379,63 @@ static void mps2_common_init(MachineState *machine)
     create_unimplemented_device("HSEM",        0x58026400, 0x00000400);
     create_unimplemented_device("RAM ECC 3",   0x58027000, 0x00000400);
     
+    qemu_log("Created STM32 Devices");
+    /* PRM to add back in added STM Power management */
+    //DeviceState *pwr_dev = qdev_create(NULL, "f2xx_pwr");
+
+    // PRM initialise the PWR peripheral.
+    object_initialize_child(OBJECT(mms), "pwr", &mms->pwr, TYPE_STM32F7XX_PWR);
+
+    pwr = DEVICE(&(mms->pwr));
     
-    //create_unimplemented_device("zbtsmram mirror", 0x00400000, 0x00400000);
-    //create_unimplemented_device("RESERVED 1", 0x00800000, 0x00800000);
-    //create_unimplemented_device("Block RAM", 0x01000000, 0x00010000);
-    //create_unimplemented_device("RESERVED 2", 0x01010000, 0x1EFF0000);
-    //create_unimplemented_device("RESERVED 3", 0x20800000, 0x00800000);
-    //create_unimplemented_device("PSRAM", 0x21000000, 0x01000000);
-    /* These three ranges all cover multiple devices; we may implement
-     * some of them below (in which case the real device takes precedence
-     * over the unimplemented-region mapping).
-     */
-    //create_unimplemented_device("CMSDK APB peripheral region @0x40000000",
-//                                0x40000000, 0x00010000);
-//create_unimplemented_device("CMSDK AHB peripheral region @0x40010000",
-    //                              0x40010000, 0x00010000);
-//create_unimplemented_device("Extra peripheral region @0x40020000",
-    //                          0x40020000, 0x00010000);
+    busdev = SYS_BUS_DEVICE(pwr);
+    
+    // map the io to physical addresses
+    sysbus_mmio_map(busdev, 0, 0x58024800);
+    
+    //stm32_init_periph(pwr_dev, STM32_RTC, 0x58024800, NULL);
+    //qdev_init_nofail(pwr_dev);
+    //sysbus_mmio_map(SYS_BUS_DEVICE(pwr_dev), 0, 0x58024800);
 
-    //create_unimplemented_device("RESERVED 4", 0x40030000, 0x001D0000);
-    //create_unimplemented_device("VGA", 0x41000000, 0x0200000);
+    //qdev_prop_set_ptr((*cpu)->env.nvic, "stm32_pwr", pwr_dev);
 
+    /* PRM end */
+    
     switch (mmc->fpga_type) {
     case FPGA_AN385:
     case FPGA_AN386:
     case FPGA_AN500:
     {
-        /* The overflow IRQs for UARTs 0, 1 and 2 are ORed together.
-         * Overflow for UARTs 4 and 5 doesn't trigger any interrupt.
-         */
-        Object *orgate;
-        DeviceState *orgate_dev;
+        for (i = 0; i < STM_NUM_USARTS; i++)
+        {
+            static const uint32_t usart_addr[STM_NUM_USARTS] = {0x40011000, 0x40004400,
+                                              0x40004800, 0x40004C00,
+                                              0x40005000, 0x40011400};
+            
+            // initialise the child object for the USARTS
+            object_initialize_child(OBJECT(mms), "usart[*]", &mms->usart[i], TYPE_STM32F2XX_USART);
 
-        orgate = object_new(TYPE_OR_IRQ);
-        object_property_set_int(orgate, "num-lines", 6, &error_fatal);
-        qdev_realize(DEVICE(orgate), NULL, &error_fatal);
-        orgate_dev = DEVICE(orgate);
-        qdev_connect_gpio_out(orgate_dev, 0, qdev_get_gpio_in(armv7m, 12));
+            // get a handle for the device
+            usart = DEVICE(&(mms->usart[i]));
 
-        for (i = 0; i < 5; i++) {
-            static const hwaddr uartbase[] = {0x40004000, 0x40005000,
-                                              0x40006000, 0x40007000,
-                                              0x40009000};
-            /* RX irq number; TX irq is always one greater */
-            static const int uartirq[] = {0, 2, 4, 18, 20};
-            qemu_irq txovrint = NULL, rxovrint = NULL;
-
-            if (i < 3) {
-                txovrint = qdev_get_gpio_in(orgate_dev, i * 2);
-                rxovrint = qdev_get_gpio_in(orgate_dev, i * 2 + 1);
+            // PRM NOTE: only serial device 0 is actually connected to anything.
+            // At the moment, I am unsure of how to connect other serial devices.
+            // I think it is possible through the QEMU command line but I am not sure how?
+            // On the Nucleo STM32H753ZI board, USART3 (offset 2 into usart_addr) is the
+            // one that connects through STLink to a PC UART.
+            if (i==2)
+            {
+                qdev_prop_set_chr(usart, "chardev", serial_hd(0));
             }
+            if (!sysbus_realize(SYS_BUS_DEVICE(&mms->usart[i]), &error_fatal))
+            {
+                qemu_log("Can't initialise the USART number %d\n", i+1 );
+                return;
+            }
+            busdev = SYS_BUS_DEVICE(usart);
 
-            cmsdk_apb_uart_create(uartbase[i],
-                                  qdev_get_gpio_in(armv7m, uartirq[i] + 1),
-                                  qdev_get_gpio_in(armv7m, uartirq[i]),
-                                  txovrint, rxovrint,
-                                  NULL,
-                                  serial_hd(i), SYSCLK_FRQ);
+            // map the io to physical addresses
+            sysbus_mmio_map(busdev, 0,usart_addr[i]);
         }
         break;
     }
@@ -439,30 +452,6 @@ static void mps2_common_init(MachineState *machine)
         qdev_realize(DEVICE(orgate), NULL, &error_fatal);
         orgate_dev = DEVICE(orgate);
         qdev_connect_gpio_out(orgate_dev, 0, qdev_get_gpio_in(armv7m, 12));
-
-        for (i = 0; i < 5; i++) {
-            /* system irq numbers for the combined tx/rx for each UART */
-            static const int uart_txrx_irqno[] = {0, 2, 45, 46, 56};
-            static const hwaddr uartbase[] = {0x40004000, 0x40005000,
-                                              0x4002c000, 0x4002d000,
-                                              0x4002e000};
-            Object *txrx_orgate;
-            DeviceState *txrx_orgate_dev;
-
-            txrx_orgate = object_new(TYPE_OR_IRQ);
-            object_property_set_int(txrx_orgate, "num-lines", 2, &error_fatal);
-            qdev_realize(DEVICE(txrx_orgate), NULL, &error_fatal);
-            txrx_orgate_dev = DEVICE(txrx_orgate);
-            qdev_connect_gpio_out(txrx_orgate_dev, 0,
-                                  qdev_get_gpio_in(armv7m, uart_txrx_irqno[i]));
-            cmsdk_apb_uart_create(uartbase[i],
-                                  qdev_get_gpio_in(txrx_orgate_dev, 0),
-                                  qdev_get_gpio_in(txrx_orgate_dev, 1),
-                                  qdev_get_gpio_in(orgate_dev, i * 2),
-                                  qdev_get_gpio_in(orgate_dev, i * 2 + 1),
-                                  NULL,
-                                  serial_hd(i), SYSCLK_FRQ);
-        }
         break;
     }
     default:
@@ -593,7 +582,7 @@ static void mps2_an500_class_init(ObjectClass *oc, void *data)
     MachineClass *mc = MACHINE_CLASS(oc);
     MPS2MachineClass *mmc = MPS2_MACHINE_CLASS(oc);
 
-    mc->desc = "ARM MPS2 with AN500 FPGA image for Cortex-M7";
+    mc->desc = "Nucleo STM32H753ZI Cortex-M7";
     mmc->fpga_type = FPGA_AN500;
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m7");
     mmc->scc_id = 0x41045000;

@@ -45,7 +45,7 @@ static int stm32f2xx_usart_can_receive(void *opaque)
 {
     STM32F2XXUsartState *s = opaque;
 
-    if (!(s->usart_sr & USART_SR_RXNE)) {
+    if (!(s->usart_isr & USART_SR_RXNE)) {
         return 1;
     }
 
@@ -63,7 +63,7 @@ static void stm32f2xx_usart_receive(void *opaque, const uint8_t *buf, int size)
     }
 
     s->usart_dr = *buf;
-    s->usart_sr |= USART_SR_RXNE;
+    s->usart_isr |= USART_SR_RXNE;
 
     if (s->usart_cr1 & USART_CR1_RXNEIE) {
         qemu_set_irq(s->irq, 1);
@@ -76,14 +76,14 @@ static void stm32f2xx_usart_reset(DeviceState *dev)
 {
     STM32F2XXUsartState *s = STM32F2XX_USART(dev);
 
-    s->usart_sr = USART_SR_RESET;
+    s->usart_isr = USART_SR_RESET;
     s->usart_dr = 0x00000000;
     s->usart_brr = 0x00000000;
     s->usart_cr1 = 0x00000000;
     s->usart_cr2 = 0x00000000;
     s->usart_cr3 = 0x00000000;
     s->usart_gtpr = 0x00000000;
-
+   
     qemu_set_irq(s->irq, 0);
 }
 
@@ -96,13 +96,16 @@ static uint64_t stm32f2xx_usart_read(void *opaque, hwaddr addr,
     DB_PRINT("Read 0x%"HWADDR_PRIx"\n", addr);
 
     switch (addr) {
-    case USART_SR:
-        retvalue = s->usart_sr;
+    case USART_ISR:
+        retvalue = s->usart_isr;
+        // set the enable ack bits: always enabled.
+        retvalue |= USART_SR_TEACK;
+        retvalue |= USART_SR_REACK;
         qemu_chr_fe_accept_input(&s->chr);
         return retvalue;
-    case USART_DR:
+    case USART_RDR:
         DB_PRINT("Value: 0x%" PRIx32 ", %c\n", s->usart_dr, (char) s->usart_dr);
-        s->usart_sr &= ~USART_SR_RXNE;
+        s->usart_isr &= ~USART_SR_RXNE;
         qemu_chr_fe_accept_input(&s->chr);
         qemu_set_irq(s->irq, 0);
         return s->usart_dr & 0x3FF;
@@ -115,7 +118,7 @@ static uint64_t stm32f2xx_usart_read(void *opaque, hwaddr addr,
     case USART_CR3:
         return s->usart_cr3;
     case USART_GTPR:
-        return s->usart_gtpr;
+        return s->usart_gtpr; 
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: Bad offset 0x%"HWADDR_PRIx"\n", __func__, addr);
@@ -135,19 +138,19 @@ static void stm32f2xx_usart_write(void *opaque, hwaddr addr,
     DB_PRINT("Write 0x%" PRIx32 ", 0x%"HWADDR_PRIx"\n", value, addr);
 
     switch (addr) {
-    case USART_SR:
+    case USART_ISR:
         if (value <= 0x3FF) {
             /* I/O being synchronous, TXE is always set. In addition, it may
                only be set by hardware, so keep it set here. */
-            s->usart_sr = value | USART_SR_TXE;
+            s->usart_isr = value | USART_SR_TXE;
         } else {
-            s->usart_sr &= value;
+            s->usart_isr &= value;
         }
-        if (!(s->usart_sr & USART_SR_RXNE)) {
+        if (!(s->usart_isr & USART_SR_RXNE)) {
             qemu_set_irq(s->irq, 0);
         }
         return;
-    case USART_DR:
+    case USART_TDR:
         if (value < 0xF000) {
             ch = value;
             /* XXX this blocks entire thread. Rewrite to use
@@ -158,7 +161,11 @@ static void stm32f2xx_usart_write(void *opaque, hwaddr addr,
                set. Unlike TXE however, which is read-only, software may
                clear TC by writing 0 to the SR register, so set it again
                on each write. */
-            s->usart_sr |= USART_SR_TC;
+            s->usart_isr |= USART_SR_TC;
+        }
+        else
+        {
+            qemu_log("Can't write char\n");
         }
         return;
     case USART_BRR:
@@ -167,7 +174,7 @@ static void stm32f2xx_usart_write(void *opaque, hwaddr addr,
     case USART_CR1:
         s->usart_cr1 = value;
             if (s->usart_cr1 & USART_CR1_RXNEIE &&
-                s->usart_sr & USART_SR_RXNE) {
+                s->usart_isr & USART_SR_RXNE) {
                 qemu_set_irq(s->irq, 1);
             }
         return;

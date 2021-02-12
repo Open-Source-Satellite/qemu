@@ -29,13 +29,19 @@
 #include "chardev/char-fe.h"
 #include "qom/object.h"
 
-#define USART_SR   0x00
-#define USART_DR   0x04
-#define USART_BRR  0x08
-#define USART_CR1  0x0C
-#define USART_CR2  0x10
-#define USART_CR3  0x14
-#define USART_GTPR 0x18
+#define USART_RDR   0x24
+#define USART_TDR   0x28
+#define USART_BRR   0x0C
+#define USART_CR1   0x00
+#define USART_CR2   0x04
+#define USART_CR3   0x08
+#define USART_GTPR  0x10
+#define USART_RTOR  0x14 // to add to read/write registers
+#define USART_RQR   0x18 // to add to read/write registers
+#define USART_ISR   0x1C // to add to read/write registers
+#define USART_ICR   0x20 // to add to read/write registers
+#define USART_PRESC 0x2C // to add to read/write registers
+
 
 /*
  * NB: The reset value mentioned in "24.6.1 Status register" seems bogus.
@@ -44,9 +50,11 @@
  */
 #define USART_SR_RESET (USART_SR_TXE | USART_SR_TC)
 
-#define USART_SR_TXE  (1 << 7)
-#define USART_SR_TC   (1 << 6)
-#define USART_SR_RXNE (1 << 5)
+#define USART_SR_TXE   (1 << 7)
+#define USART_SR_TEACK (1 << 21)
+#define USART_SR_REACK (1 << 22)
+#define USART_SR_TC    (1 << 6)
+#define USART_SR_RXNE  (1 << 5)
 
 #define USART_CR1_UE  (1 << 13)
 #define USART_CR1_RXNEIE  (1 << 5)
@@ -63,7 +71,7 @@ struct STM32F2XXUsartState {
     /* <public> */
     MemoryRegion mmio;
 
-    uint32_t usart_sr;
+    uint32_t usart_isr;
     uint32_t usart_dr;
     uint32_t usart_brr;
     uint32_t usart_cr1;
