@@ -27,8 +27,7 @@
  *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  *  SOFTWARE.
- ***********************************************************************************
- *  Created on: 17-Dec-2019 11:35:14                      
+ ***********************************************************************************                      
  *  Header file, the interface for the STM32F7 PWR peripheral       
  *  @author: Paul Madle                     
  ***********************************************************************************/
@@ -48,6 +47,7 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
+#include "qom/object.h"
 
 #define R_PWR_CR      (0x00/4)
 #define R_PWR_CR_LPDS   0x00000001
@@ -55,10 +55,15 @@
 
 #define R_PWR_CSR     (0x04/4)
 
-#define R_PWR_MAX     (0x08/4)
+#define R_PWR_MAX     (0x1C/4)
+
+#define R_PWR_D3CR    (0x18/4)
 
 #define TYPE_STM32F7XX_PWR "f7xx_pwr"
 
+// create the object
+OBJECT_DECLARE_SIMPLE_TYPE(STM32F7XXPwrState, STM32F7XX_PWR)
+    
 typedef struct STM32F7XXPwrState {
     SysBusDevice  busdev;
     MemoryRegion  iomem;

@@ -386,12 +386,23 @@ static void mps2_common_init(MachineState *machine)
     // PRM initialise the PWR peripheral.
     object_initialize_child(OBJECT(mms), "pwr", &mms->pwr, TYPE_STM32F7XX_PWR);
 
+    if (!sysbus_realize(SYS_BUS_DEVICE(&mms->pwr), &error_fatal))
+    {
+        qemu_log("Can't initialise the PWR hardware\n");
+        return;
+    }
     pwr = DEVICE(&(mms->pwr));
+
+    qemu_log("pwr device is 0x%lx\n", (long unsigned int)pwr);
     
     busdev = SYS_BUS_DEVICE(pwr);
+
+    qemu_log("busdev device is 0x%lx\n", (long unsigned int)busdev);
     
     // map the io to physical addresses
     sysbus_mmio_map(busdev, 0, 0x58024800);
+
+    qemu_log("mapped pwr io mem space");
     
     //stm32_init_periph(pwr_dev, STM32_RTC, 0x58024800, NULL);
     //qdev_init_nofail(pwr_dev);
@@ -582,7 +593,7 @@ static void mps2_an500_class_init(ObjectClass *oc, void *data)
     MachineClass *mc = MACHINE_CLASS(oc);
     MPS2MachineClass *mmc = MPS2_MACHINE_CLASS(oc);
 
-    mc->desc = "Nucleo STM32H753ZI Cortex-M7";
+    mc->desc = "ARM MPS2 with AN500 FPGA image for Cortex-M7";
     mmc->fpga_type = FPGA_AN500;
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m7");
     mmc->scc_id = 0x41045000;

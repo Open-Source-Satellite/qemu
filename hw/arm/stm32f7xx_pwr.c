@@ -50,32 +50,39 @@ f7xx_pwr_read(void *arg, hwaddr addr, unsigned int size)
     STM32F7XXPwrState *s = arg;
     uint32_t r;
     int offset = addr & 0x3;
+    uint32_t value;
 
-    qemu_log("PWR: reading data 0x%lx\n", addr);
+    qemu_log("PWR: reading register 0x%lx\n", addr);
     
-    addr >>= 2;
-    if (addr >= R_PWR_MAX) {
-        qemu_log_mask(LOG_GUEST_ERROR, "invalid read f7xx pwr register 0x%x\n",
-          (unsigned int)addr << 2);
-        DPRINTF("  %s: result: 0\n", __func__);
-        return 0;
+    // if this is request for the D3CR
+    if (addr == R_PWR_D3CR)
+    {
+        // return VOSRDY if the clock is enabled
+        if (0 != (s->regs[addr] & 0xC000))
+        {
+            r = 0x6000; // set VOSRDY
+        }
+        else
+        {
+            r = s->regs[addr];
+        }
+    }
+    else // else, just return the value in the register
+    {
+        value = s->regs[addr];
+        r = (value >> offset * 8) & ((1ull << (8 * size)) - 1); 
     }
 
-    uint32_t value = s->regs[addr];
-
-    r = (value >> offset * 8) & ((1ull << (8 * size)) - 1);
-
-    DPRINTF("%s: addr: 0x%llx, size: %d, value: 0x%x\n", __func__, addr, size, r);
+    qemu_log("PWR: got data 0x%x\n\n", r);
     return r;
 }
-
 static void
 f7xx_pwr_write(void *arg, hwaddr addr, uint64_t data, unsigned int size)
 {
     STM32F7XXPwrState *s = arg;
     int offset = addr & 0x3;
 
-    qemu_log("PWR: writing data 0x%lx\n", addr);
+    qemu_log("PWR: writing address 0x%lx with data 0x%lx\n", addr, data);
     
     addr >>= 2;
     if (addr >= R_PWR_MAX) {
@@ -133,7 +140,8 @@ static const MemoryRegionOps f7xx_pwr_ops = {
 
 static void f7xx_pwr_reset(DeviceState *dev)
 {
-    STM32F7XXPwrState *s = DO_UPCAST(STM32F7XXPwrState, busdev, SYS_BUS_DEVICE(dev));
+    STM32F7XXPwrState *s = STM32F7XX_PWR(dev);
+    //DO_UPCAST(STM32F7XXPwrState, busdev, SYS_BUS_DEVICE(dev));
 
     memset(s->regs, 0, sizeof(s->regs));
 }
@@ -142,13 +150,15 @@ static void f7xx_pwr_reset(DeviceState *dev)
 static int
 f7xx_pwr_init(SysBusDevice *dev)
 {
-    STM32F7XXPwrState *s = DO_UPCAST(STM32F7XXPwrState, busdev, dev);
+    STM32F7XXPwrState *s = STM32F7XX_PWR(dev);
+    //STM32F7XXPwrState *s = DO_UPCAST(STM32F7XXPwrState, busdev, dev);
 
-    memory_region_init_io(&s->iomem, OBJECT(s), &f7xx_pwr_ops, s, "pwr", 0x08);
+    memory_region_init_io(&s->iomem, OBJECT(s), &f7xx_pwr_ops, s, "pwr", 0x3FF);
     sysbus_init_mmio(dev, &s->iomem);
 
     s->regs[R_PWR_CR] = 0;
     s->regs[R_PWR_CSR] = 0;
+    s->regs[R_PWR_D3CR] = 0x2000; // Set the VOSRDY bit
 
     return 0;
 }
