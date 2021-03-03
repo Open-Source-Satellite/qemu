@@ -53,13 +53,15 @@ f7xx_pwr_read(void *arg, hwaddr addr, unsigned int size)
     uint32_t value;
 
     qemu_log("PWR: reading register 0x%lx\n", addr);
-    
+
+    addr >>= 2; // shift down the address 
     // if this is request for the D3CR
     if (addr == R_PWR_D3CR)
     {
         // return VOSRDY if the clock is enabled
         if (0 != (s->regs[addr] & 0xC000))
         {
+            qemu_log("PWR: Setting VOSRDY");
             r = 0x6000; // set VOSRDY
         }
         else
@@ -114,6 +116,8 @@ f7xx_pwr_write(void *arg, hwaddr addr, uint64_t data, unsigned int size)
     }
 
     // Save new value
+
+    qemu_log ("PWR: Commiting data 0x%lx to address 0x%lx", data, addr);
     s->regs[addr] = data;
 }
 
@@ -126,17 +130,6 @@ static const MemoryRegionOps f7xx_pwr_ops = {
         .max_access_size = 4,
     }
 };
-
-
-// Return true if we should go into standby mode when the process goes into deepsleep.
-// deepsleep is entered if the SLEEPDEEP bit is set in the SCR register when the processor
-// executes a WFI instruction.
-// PRM removed, this seems unnecessary for our implementation.
-/*bool f7xx_pwr_powerdown_deepsleep(void *opaqe)
-{
-    f7xx_pwr *s = opaqe;
-    return s->regs[R_PWR_CR] & R_PWR_CR_PDDS;
-    }*/
 
 static void f7xx_pwr_reset(DeviceState *dev)
 {

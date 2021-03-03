@@ -20,19 +20,28 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "stm32f2xx_rcc.h"
+#include "hw/arm/stm32f7xx_rcc.h"
+#include "hw/irq.h"
 #include "qemu/timer.h"
+#include "qemu/log.h"
+#include "hw/qdev-properties.h"
 #include <stdio.h>
 
 
 /* DEFINITIONS*/
+
+/* General MACROS brought over from pebble STM code */
+#define GET_BIT_MASK_ONE(position) (1 << position)
+#define GET_BIT_MASK(position, value) ((value ? 1 : 0) << position)
+#define IS_BIT_SET(value, position) ((value & GET_BIT_MASK_ONE(position)) != 0)
+
 
 /* See README for DEBUG details. */
 //#define DEBUG_STM32_RCC
 
 #ifdef DEBUG_STM32_RCC
 #define DPRINTF(fmt, ...)                                       \
-do { printf("STM32F2XX_RCC: " fmt , ## __VA_ARGS__); } while (0)
+do { printf("STM32F7XX_RCC: " fmt , ## __VA_ARGS__); } while (0)
 #else
 #define DPRINTF(fmt, ...)
 #endif
@@ -41,11 +50,11 @@ do { printf("STM32F2XX_RCC: " fmt , ## __VA_ARGS__); } while (0)
 
 #define WARN_UNIMPLEMENTED(new_value, mask, reset_value) \
     if (!IS_RESET_VALUE(new_value, mask, reset_value)) { \
-        stm32_unimp("Not implemented: RCC " #mask ". Masked value: 0x%08x\n", (new_value & mask)); \
+        qemu_log("Not implemented: RCC " #mask ". Masked value: 0x%08x\n", (new_value & mask)); \
     }
 
 #define WARN_UNIMPLEMENTED_REG(offset) \
-        stm32_unimp("STM32f2xx_rcc: unimplemented register: 0x%x", (int)offset)
+        qemu_log("STM32f7xx_rcc: unimplemented register: 0x%x", (int)offset)
 
 #define HSI_FREQ 16000000
 #define LSI_FREQ 32000
@@ -64,7 +73,7 @@ do { printf("STM32F2XX_RCC: " fmt , ## __VA_ARGS__); } while (0)
 #define RCC_CR_HSICAL_MASK      0x0000ff00
 #define RCC_CR_HSITRIM_START    3
 #define RCC_CR_HSITRIM_MASK     0x000000f8
-#define RCC_CR_HSIRDY_BIT       1
+#define RCC_CR_HSIRDY_BIT       2 // PRM changed from 1
 #define RCC_CR_HSION_BIT        0
 
 #define RCC_PLLCFGR_RESET_VALUE  0x24003010
@@ -309,7 +318,7 @@ struct Clk {
 
 /* Enable the peripheral clock if the specified bit is set in the value. */
 static void stm32_rcc_periph_enable(
-                                    Stm32f2xxRcc *s,
+                                    Stm32f7xxRcc *s,
                                     uint32_t new_value,
                                     bool init,
                                     int periph,
@@ -327,7 +336,7 @@ static void stm32_rcc_periph_enable(
 
 /* Read the configuration register.
    NOTE: Not implemented: CSS, PLLI2S, clock calibration and trimming. */
-static uint32_t stm32_rcc_RCC_CR_read(Stm32f2xxRcc *s)
+static uint32_t stm32_rcc_RCC_CR_read(Stm32f7xxRcc *s)
 {
     /* Get the status of the clocks. */
     const bool PLLON = clktree_is_enabled(s->PLLCLK);
@@ -338,6 +347,11 @@ static uint32_t stm32_rcc_RCC_CR_read(Stm32f2xxRcc *s)
     /* build the register value based on the clock states.  If a clock is on,
      * then its ready bit is always set.
      */
+
+    qemu_log("RCC: Fetching the CR register: PLLON: %d, HSEON: %d, HSION: %d, PLLI2SON %d\n", PLLON, HSEON, HSION, PLLI2SON);
+
+    // __HSI_RCC_GET_FLAG(RCC_FLAG_HSIRDY) 0x22 bits 1 and 5
+
     return (
         GET_BIT_MASK(RCC_CR_PLLRDY_BIT, PLLON) |
         GET_BIT_MASK(RCC_CR_PLLON_BIT, PLLON) |
@@ -358,14 +372,14 @@ static uint32_t stm32_rcc_RCC_CR_read(Stm32f2xxRcc *s)
  * saved - when the register is read, its value will be built using the clock
  * states.
  */
-static void stm32_rcc_RCC_CR_write(Stm32f2xxRcc *s, uint32_t new_value, bool init)
+static void stm32_rcc_RCC_CR_write(Stm32f7xxRcc *s, uint32_t new_value, bool init)
 {
     bool new_PLLON, new_HSEON, new_HSION, new_PLLI2SON;
 
     new_PLLON = IS_BIT_SET(new_value, RCC_CR_PLLON_BIT);
     if((clktree_is_enabled(s->PLLCLK) && !new_PLLON) &&
        s->RCC_CFGR_SW == SW_PLL_SELECTED) {
-        stm32_hw_warn("PLL cannot be disabled while it is selected as the system clock.");
+        qemu_log("PLL cannot be disabled while it is selected as the system clock.");
     }
     clktree_set_enabled(s->PLLCLK, new_PLLON);
 
@@ -373,7 +387,7 @@ static void stm32_rcc_RCC_CR_write(Stm32f2xxRcc *s, uint32_t new_value, bool ini
     if((clktree_is_enabled(s->HSECLK) && !new_HSEON) &&
        (s->RCC_CFGR_SW == SW_HSE_SELECTED || s->RCC_CFGR_SW == SW_PLL_SELECTED)
        ) {
-        stm32_hw_warn("HSE oscillator cannot be disabled while it is driving the system clock.");
+        qemu_log("HSE oscillator cannot be disabled while it is driving the system clock.");
     }
     clktree_set_enabled(s->HSECLK, new_HSEON);
 
@@ -381,7 +395,7 @@ static void stm32_rcc_RCC_CR_write(Stm32f2xxRcc *s, uint32_t new_value, bool ini
     if((clktree_is_enabled(s->HSECLK) && !new_HSEON) &&
        (s->RCC_CFGR_SW == SW_HSI_SELECTED || s->RCC_CFGR_SW == SW_PLL_SELECTED)
        ) {
-        stm32_hw_warn("HSI oscillator cannot be disabled while it is driving the system clock.");
+        qemu_log("HSI oscillator cannot be disabled while it is driving the system clock.");
     }
     clktree_set_enabled(s->HSICLK, new_HSION);
 
@@ -394,23 +408,23 @@ static void stm32_rcc_RCC_CR_write(Stm32f2xxRcc *s, uint32_t new_value, bool ini
 }
 
 
-static uint32_t stm32_rcc_RCC_PLLCFGR_read(Stm32f2xxRcc *s)
+static uint32_t stm32_rcc_RCC_PLLCFGR_read(Stm32f7xxRcc *s)
 {
     return s->RCC_PLLCFGR;
 }
 
-static void stm32_rcc_RCC_PLLCFGR_write(Stm32f2xxRcc *s, uint32_t new_value, bool init)
+static void stm32_rcc_RCC_PLLCFGR_write(Stm32f7xxRcc *s, uint32_t new_value, bool init)
 {
     /* PLLM division factor */
     const uint8_t new_PLLM = (new_value & RCC_PLLCFGR_PLLM_MASK) >> RCC_PLLCFGR_PLLM_START;
     if (new_PLLM <= 1) {
-        hw_error("PLLM division factor cannot be 0 or 1. Given: %u", new_PLLM);
+        qemu_log("PLLM division factor cannot be 0 or 1. Given: %u", new_PLLM);
     }
 
     /* PLLN multiplication factor */
     const uint16_t new_PLLN = (new_value & RCC_PLLCFGR_PLLN_MASK) >> RCC_PLLCFGR_PLLN_START;
     if (new_PLLN <= 1 || new_PLLN >= 433) {
-        hw_error("PLLN multiplication factor must be between 2 and 432 (inclusive). Given: %u", new_PLLN);
+        qemu_log("PLLN multiplication factor must be between 2 and 432 (inclusive). Given: %u", new_PLLN);
     }
 
     /* PLLSRC */
@@ -423,15 +437,15 @@ static void stm32_rcc_RCC_PLLCFGR_write(Stm32f2xxRcc *s, uint32_t new_value, boo
     if (init == false) {
         const bool are_disabled = (!clktree_is_enabled(s->PLLCLK) /* && TODO: !clktree_is_enabled(s->PLLI2SCLK) */);
         if (are_disabled == false) {
-            const char *warning_fmt = "Can only change %s while PLL and PLLI2S are disabled";
+            
             if (new_PLLM != s->RCC_PLLCFGR_PLLM) {
-                stm32_hw_warn(warning_fmt, "PLLM");
+                qemu_log("Can only change %s while PLL and PLLI2S are disabled", "PLLM");
             }
             if (new_PLLN != s->RCC_PLLCFGR_PLLN) {
-                stm32_hw_warn(warning_fmt, "PLLN");
+                qemu_log("Can only change %s while PLL and PLLI2S are disabled", "PLLN");
             }
             if (new_PLLSRC != s->RCC_PLLCFGR_PLLSRC) {
-                stm32_hw_warn(warning_fmt, "PLLSRC");
+                qemu_log("Can only change %s while PLL and PLLI2S are disabled", "PLLSRC");
             }
         }
     }
@@ -454,31 +468,31 @@ static void stm32_rcc_RCC_PLLCFGR_write(Stm32f2xxRcc *s, uint32_t new_value, boo
 }
 
 
-static uint32_t stm32_rcc_RCC_PLLI2SCFGR_read(Stm32f2xxRcc *s)
+static uint32_t stm32_rcc_RCC_PLLI2SCFGR_read(Stm32f7xxRcc *s)
 {
     return s->RCC_PLLI2SCFGR;
 }
 
 
-static void stm32_rcc_RCC_PLLI2SCFGR_write(Stm32f2xxRcc *s, uint32_t new_value, bool init)
+static void stm32_rcc_RCC_PLLI2SCFGR_write(Stm32f7xxRcc *s, uint32_t new_value, bool init)
 {
     /* PLLR division factor */
     const uint16_t new_PLLR = (new_value & RCC_PLLI2SCFGR_PLLR_MASK) >> RCC_PLLI2SCFGR_PLLR_START;
     if (new_PLLR < 2 || new_PLLR > 7) {
-        hw_error("PLLR multiplication factor must be between 2 and 7. Given: %u", new_PLLR);
+        qemu_log("PLLR multiplication factor must be between 2 and 7. Given: %u", new_PLLR);
     }
 
     /* PLLQ division factor */
     const uint16_t new_PLLQ = (new_value & RCC_PLLI2SCFGR_PLLQ_MASK) >> RCC_PLLI2SCFGR_PLLQ_START;
     if (new_PLLQ > 15) {
-        hw_error("PLLQ multiplication factor must be between 0 and 15 "
+        qemu_log("PLLQ multiplication factor must be between 0 and 15 "
                  "(inclusive). Given: %u", new_PLLQ);
     }
 
     /* PLLN multiplication factor */
     const uint16_t new_PLLN = (new_value & RCC_PLLI2SCFGR_PLLN_MASK) >> RCC_PLLI2SCFGR_PLLN_START;
     if (new_PLLN < 2 || new_PLLN > 433) {
-        hw_error("PLLN multiplication factor must be between 2 and 432 (inclusive). Given: %u", new_PLLN);
+        qemu_log("PLLN multiplication factor must be between 2 and 432 (inclusive). Given: %u", new_PLLN);
     }
 
 
@@ -488,13 +502,13 @@ static void stm32_rcc_RCC_PLLI2SCFGR_write(Stm32f2xxRcc *s, uint32_t new_value, 
         if (are_disabled == false) {
             const char *warning_fmt = "Can only change %s while PLL and PLLI2S are disabled";
             if (new_PLLR != s->RCC_PLLI2SCFGR_PLLR) {
-                stm32_hw_warn(warning_fmt, "PLLR");
+                qemu_log(warning_fmt, "PLLR");
             }
             if (new_PLLQ != s->RCC_PLLI2SCFGR_PLLQ) {
-                stm32_hw_warn(warning_fmt, "PLLQ");
+                qemu_log(warning_fmt, "PLLQ");
             }
             if (new_PLLN != s->RCC_PLLCFGR_PLLN) {
-                stm32_hw_warn(warning_fmt, "PLLN");
+                qemu_log(warning_fmt, "PLLN");
             }
         }
     }
@@ -513,7 +527,7 @@ static void stm32_rcc_RCC_PLLI2SCFGR_write(Stm32f2xxRcc *s, uint32_t new_value, 
 }
 
 
-static uint32_t stm32_rcc_RCC_CFGR_read(Stm32f2xxRcc *s)
+static uint32_t stm32_rcc_RCC_CFGR_read(Stm32f7xxRcc *s)
 {
     return
     (s->RCC_CFGR_PPRE2 << RCC_CFGR_PPRE2_START) |
@@ -523,7 +537,7 @@ static uint32_t stm32_rcc_RCC_CFGR_read(Stm32f2xxRcc *s)
     (s->RCC_CFGR_SW << RCC_CFGR_SWS_START);
 }
 
-static void stm32_rcc_RCC_CFGR_write(Stm32f2xxRcc *s, uint32_t new_value, bool init)
+static void stm32_rcc_RCC_CFGR_write(Stm32f7xxRcc *s, uint32_t new_value, bool init)
 {
     /* PPRE2 */
     s->RCC_CFGR_PPRE2 = (new_value & RCC_CFGR_PPRE2_MASK) >> RCC_CFGR_PPRE2_START;
@@ -558,7 +572,7 @@ static void stm32_rcc_RCC_CFGR_write(Stm32f2xxRcc *s, uint32_t new_value, bool i
             clktree_set_selected_input(s->SYSCLK, s->RCC_CFGR_SW);
             break;
         default:
-            hw_error("Invalid input selected for SYSCLK");
+            qemu_log("Invalid input selected for SYSCLK");
             break;
     }
 
@@ -571,12 +585,12 @@ static void stm32_rcc_RCC_CFGR_write(Stm32f2xxRcc *s, uint32_t new_value, bool i
     WARN_UNIMPLEMENTED(new_value, RCC_CFGR_SWS_MASK, RCC_CFGR_RESET_VALUE);
 }
 
-static uint32_t stm32_rcc_RCC_CIR_read(Stm32f2xxRcc *s)
+static uint32_t stm32_rcc_RCC_CIR_read(Stm32f7xxRcc *s)
 {
     return s->RCC_CIR;
 }
 
-static void stm32_rcc_RCC_CIR_write(Stm32f2xxRcc *s, uint32_t new_value, bool init)
+static void stm32_rcc_RCC_CIR_write(Stm32f7xxRcc *s, uint32_t new_value, bool init)
 {
     WARN_UNIMPLEMENTED(new_value, 1 << RCC_CIR_CSSC_BIT, RCC_CIR_RESET_VALUE);
     WARN_UNIMPLEMENTED(new_value, 1 << RCC_CIR_PLLI2SRDYC_BIT , RCC_CIR_RESET_VALUE);
@@ -600,22 +614,22 @@ static void stm32_rcc_RCC_CIR_write(Stm32f2xxRcc *s, uint32_t new_value, bool in
     WARN_UNIMPLEMENTED(new_value, 1 << RCC_CIR_LSIRDYF_BIT , RCC_CIR_RESET_VALUE);
 }
 
-static uint32_t stm32_rcc_RCC_AHB1ENR_read(Stm32f2xxRcc *s)
+static uint32_t stm32_rcc_RCC_AHB1ENR_read(Stm32f7xxRcc *s)
 {
     return s->RCC_AHB1ENR;
 }
 
-static uint32_t stm32_rcc_RCC_AHB2ENR_read(Stm32f2xxRcc *s)
+static uint32_t stm32_rcc_RCC_AHB2ENR_read(Stm32f7xxRcc *s)
 {
     return s->RCC_AHB2ENR;
 }
 
-static uint32_t stm32_rcc_RCC_AHB3ENR_read(Stm32f2xxRcc *s)
+static uint32_t stm32_rcc_RCC_AHB3ENR_read(Stm32f7xxRcc *s)
 {
     return s->RCC_AHB3ENR;
 }
 
-static void stm32_rcc_RCC_AHB1ENR_write(Stm32f2xxRcc *s, uint32_t new_value, bool init)
+static void stm32_rcc_RCC_AHB1ENR_write(Stm32f7xxRcc *s, uint32_t new_value, bool init)
 {
     clktree_set_enabled(s->PERIPHCLK[STM32_DMA2], IS_BIT_SET(new_value, RCC_AHB1ENR_DMA2EN_BIT));
     clktree_set_enabled(s->PERIPHCLK[STM32_DMA1], IS_BIT_SET(new_value, RCC_AHB1ENR_DMA1EN_BIT));
@@ -645,7 +659,7 @@ static void stm32_rcc_RCC_AHB1ENR_write(Stm32f2xxRcc *s, uint32_t new_value, boo
     WARN_UNIMPLEMENTED(new_value, 1 << RCC_AHB1ENR_BKPSRAMEN_BIT, RCC_AHB1ENR_RESET_VALUE);
 }
 
-static void stm32_rcc_RCC_AHB2ENR_write(Stm32f2xxRcc *s, uint32_t new_value, bool init)
+static void stm32_rcc_RCC_AHB2ENR_write(Stm32f7xxRcc *s, uint32_t new_value, bool init)
 {
     clktree_set_enabled(s->PERIPHCLK[STM32_DCMI_PERIPH],
                         IS_BIT_SET(new_value, RCC_AHB2ENR_DCMIEN_BIT));
@@ -658,7 +672,7 @@ static void stm32_rcc_RCC_AHB2ENR_write(Stm32f2xxRcc *s, uint32_t new_value, boo
     s->RCC_AHB2ENR = new_value;
 }
 
-static void stm32_rcc_RCC_AHB3ENR_write(Stm32f2xxRcc *s, uint32_t new_value, bool init)
+static void stm32_rcc_RCC_AHB3ENR_write(Stm32f7xxRcc *s, uint32_t new_value, bool init)
 {
     clktree_set_enabled(s->PERIPHCLK[STM32_FSMC],
                         IS_BIT_SET(new_value, RCC_AHB3ENR_FSMCEN_BIT));
@@ -667,7 +681,7 @@ static void stm32_rcc_RCC_AHB3ENR_write(Stm32f2xxRcc *s, uint32_t new_value, boo
 
 /* Write the APB2 peripheral clock enable register
  * Enables/Disables the peripheral clocks based on each bit. */
-static void stm32_rcc_RCC_APB2ENR_write(Stm32f2xxRcc *s, uint32_t new_value,
+static void stm32_rcc_RCC_APB2ENR_write(Stm32f7xxRcc *s, uint32_t new_value,
                                         bool init)
 {
     /* TODO: enable/disable missing peripherals */
@@ -680,7 +694,7 @@ static void stm32_rcc_RCC_APB2ENR_write(Stm32f2xxRcc *s, uint32_t new_value,
 
 /* Write the APB1 peripheral clock enable register
  * Enables/Disables the peripheral clocks based on each bit. */
-static void stm32_rcc_RCC_APB1ENR_write(Stm32f2xxRcc *s, uint32_t new_value,
+static void stm32_rcc_RCC_APB1ENR_write(Stm32f7xxRcc *s, uint32_t new_value,
                                         bool init)
 {
     stm32_rcc_periph_enable(s, new_value, init, STM32_UART8,
@@ -700,7 +714,7 @@ static void stm32_rcc_RCC_APB1ENR_write(Stm32f2xxRcc *s, uint32_t new_value,
     s->RCC_APB1ENR = new_value & 0x36fec9ff;
 }
 
-static uint32_t stm32_rcc_RCC_BDCR_read(Stm32f2xxRcc *s)
+static uint32_t stm32_rcc_RCC_BDCR_read(Stm32f7xxRcc *s)
 {
     bool lseon = clktree_is_enabled(s->LSECLK);
 
@@ -708,14 +722,14 @@ static uint32_t stm32_rcc_RCC_BDCR_read(Stm32f2xxRcc *s)
     GET_BIT_MASK(RCC_BDCR_LSEON_BIT, lseon) | 0x100; /* XXX force LSE */
 }
 
-static void stm32_rcc_RCC_BDCR_writeb0(Stm32f2xxRcc *s, uint8_t new_value, bool init)
+static void stm32_rcc_RCC_BDCR_writeb0(Stm32f7xxRcc *s, uint8_t new_value, bool init)
 {
     clktree_set_enabled(s->LSECLK, IS_BIT_SET(new_value, RCC_BDCR_LSEON_BIT));
     
     WARN_UNIMPLEMENTED(new_value, 1 << RCC_BDCR_LSEBYP_BIT, RCC_BDCR_RESET_VALUE);
 }
 
-static void stm32_rcc_RCC_BDCR_write(Stm32f2xxRcc *s, uint32_t new_value, bool init)
+static void stm32_rcc_RCC_BDCR_write(Stm32f7xxRcc *s, uint32_t new_value, bool init)
 {
     stm32_rcc_RCC_BDCR_writeb0(s, new_value & 0xff, init);
 
@@ -725,7 +739,7 @@ static void stm32_rcc_RCC_BDCR_write(Stm32f2xxRcc *s, uint32_t new_value, bool i
 }
 
 /* Works the same way as stm32_rcc_RCC_CR_read */
-static uint32_t stm32_rcc_RCC_CSR_read(Stm32f2xxRcc *s)
+static uint32_t stm32_rcc_RCC_CSR_read(Stm32f7xxRcc *s)
 {
     bool lseon = clktree_is_enabled(s->LSICLK);
 
@@ -734,7 +748,7 @@ static uint32_t stm32_rcc_RCC_CSR_read(Stm32f2xxRcc *s)
 }
 
 /* Works the same way as stm32_rcc_RCC_CR_write */
-static void stm32_rcc_RCC_CSR_write(Stm32f2xxRcc *s, uint32_t new_value, bool init)
+static void stm32_rcc_RCC_CSR_write(Stm32f7xxRcc *s, uint32_t new_value, bool init)
 {
     clktree_set_enabled(s->LSICLK, IS_BIT_SET(new_value, RCC_CSR_LSION_BIT));
 }
@@ -743,8 +757,10 @@ static void stm32_rcc_RCC_CSR_write(Stm32f2xxRcc *s, uint32_t new_value, bool in
 
 static uint64_t stm32_rcc_readw(void *opaque, hwaddr offset)
 {
-    Stm32f2xxRcc *s = (Stm32f2xxRcc *)opaque;
+    Stm32f7xxRcc *s = (Stm32f7xxRcc *)opaque;
 
+    qemu_log("RCC: reading address 0x%lx\n", offset);
+    
     switch (offset) {
         case RCC_CR_OFFSET:
             return stm32_rcc_RCC_CR_read(s);
@@ -757,13 +773,11 @@ static uint64_t stm32_rcc_readw(void *opaque, hwaddr offset)
         case RCC_AHB1RSTR_OFFSET:
         case RCC_AHB2RSTR_OFFSET:
         case RCC_AHB3RSTR_OFFSET:
-            WARN_UNIMPLEMENTED_REG(offset);
+            qemu_log("WARNING: RCC_AHBXRSTR is not implemented in the emulation\n");
             return 0;
         case RCC_APB1RSTR_OFFSET:
-            WARN_UNIMPLEMENTED_REG(offset);
-            return 0;
-        case RCC_APB2RSTR_OFFSET:
-            WARN_UNIMPLEMENTED_REG(offset);
+        case RCC_APB2RSTR_OFFSET:   
+            qemu_log("WARNING: RCC_APBXRSTR is not implemented in the emulation\n");
             return 0;
         case RCC_AHB1ENR_OFFSET:
             return stm32_rcc_RCC_AHB1ENR_read(s);
@@ -780,7 +794,7 @@ static uint64_t stm32_rcc_readw(void *opaque, hwaddr offset)
         case RCC_AHB3LPENR_OFFSET:
         case RCC_APB1LPENR_OFFSET:
         case RCC_APB2LPENR_OFFSET:
-            WARN_UNIMPLEMENTED_REG(offset);
+            qemu_log("WARNING: RCC_AXBXLPENR is not implemented in the emulation\n");
             return 0;
         case RCC_BDCR_OFFSET:
             return stm32_rcc_RCC_BDCR_read(s);
@@ -792,7 +806,7 @@ static uint64_t stm32_rcc_readw(void *opaque, hwaddr offset)
         case RCC_PLLI2SCFGR_OFFSET:
             return stm32_rcc_RCC_PLLI2SCFGR_read(s);
         default:
-            WARN_UNIMPLEMENTED_REG(offset);
+            qemu_log("WARNING: register offset 0x%lx is not implemented in the emulation\n", offset);
             break;
     }
     return 0;
@@ -800,14 +814,14 @@ static uint64_t stm32_rcc_readw(void *opaque, hwaddr offset)
 
 static void stm32_rcc_writeb(void *opaque, hwaddr offset, uint64_t value)
 {
-    Stm32f2xxRcc *s = (Stm32f2xxRcc *)opaque;
+    Stm32f7xxRcc *s = (Stm32f7xxRcc *)opaque;
 
     switch (offset) {
     case RCC_BDCR_OFFSET:
         stm32_rcc_RCC_BDCR_writeb0(s, value, false);
         break;
     default:
-        STM32_BAD_REG(offset, 1);
+        qemu_log("RCC: Can't perform a writeb other than to offset BDCR");
         break;
     }
 }
@@ -815,7 +829,7 @@ static void stm32_rcc_writeb(void *opaque, hwaddr offset, uint64_t value)
 static void stm32_rcc_writew(void *opaque, hwaddr offset,
                              uint64_t value)
 {
-    Stm32f2xxRcc *s = (Stm32f2xxRcc *)opaque;
+    Stm32f7xxRcc *s = (Stm32f7xxRcc *)opaque;
 
     switch(offset) {
         case RCC_CR_OFFSET:
@@ -831,13 +845,13 @@ static void stm32_rcc_writew(void *opaque, hwaddr offset,
             stm32_rcc_RCC_CIR_write(s, value, false);
             break;
         case RCC_APB1RSTR_OFFSET:
-            stm32_unimp("Unimplemented write: RCC_APB1RSTR_OFFSET 0x%x\n", (uint32_t)value);
+            qemu_log("RCC: Unimplemented write: RCC_APB1RSTR_OFFSET 0x%x\n", (uint32_t)value);
             break;
         case RCC_APB2RSTR_OFFSET:
-            stm32_unimp("Unimplemented write: RCC_APB2RSTR_OFFSET 0x%x\n", (uint32_t)value);
+            qemu_log("Unimplemented write: RCC_APB2RSTR_OFFSET 0x%x\n", (uint32_t)value);
             break;
         case RCC_AHB3RSTR_OFFSET:
-            WARN_UNIMPLEMENTED_REG(offset);
+            qemu_log("Unimplemented write: RCC_APB3RSTR_OFFSET 0x%x\n", (uint32_t)value);
             break;
         case RCC_AHB1ENR_OFFSET:
             stm32_rcc_RCC_AHB1ENR_write(s, value, false);
@@ -850,7 +864,7 @@ static void stm32_rcc_writew(void *opaque, hwaddr offset,
             break;
         case RCC_APB1LPENR_OFFSET:
         case RCC_APB2LPENR_OFFSET:
-            WARN_UNIMPLEMENTED_REG(offset);
+            qemu_log("Unimplemented write: RCC_APBXLPENR_OFFSET 0x%x\n", (uint32_t)value);
             break;
         case RCC_APB2ENR_OFFSET:
             stm32_rcc_RCC_APB2ENR_write(s, value, false);
@@ -859,13 +873,13 @@ static void stm32_rcc_writew(void *opaque, hwaddr offset,
             stm32_rcc_RCC_APB1ENR_write(s, value, false);
             break;
         case RCC_AHB1LPENR_OFFSET:
-            stm32_unimp("Unimplemented: RCC_AHB1LPENR_OFFSET\n");
+            qemu_log("RCC: Unimplemented: RCC_AHB1LPENR_OFFSET\n");
             break;
         case RCC_AHB2LPENR_OFFSET:
-            stm32_unimp("Unimplemented: RCC_AHB2LPENR_OFFSET\n");
+            qemu_log("RCC: Unimplemented: RCC_AHB2LPENR_OFFSET\n");
             break;
         case RCC_AHB3LPENR_OFFSET:
-            stm32_unimp("Unimplemented: RCC_AHB3LPENR_OFFSET\n");
+            qemu_log("RCC: Unimplemented: RCC_AHB3LPENR_OFFSET\n");
             break;
         case RCC_BDCR_OFFSET:
             stm32_rcc_RCC_BDCR_write(s, value, false);
@@ -874,13 +888,13 @@ static void stm32_rcc_writew(void *opaque, hwaddr offset,
             stm32_rcc_RCC_CSR_write(s, value, false);
             break;
         case RCC_SSCGR_OFFSET:
-            WARN_UNIMPLEMENTED_REG(offset);
+            qemu_log("RCC: Unimplemented: RCC_SSCGR_OFFSET\n");
             break;
         case RCC_PLLI2SCFGR_OFFSET:
             stm32_rcc_RCC_PLLI2SCFGR_write(s, value, false);
             break;
         default:
-            WARN_UNIMPLEMENTED_REG(offset);
+            qemu_log("RCC: Unimplemented: register offset 0x%lx\n", offset);
             break;
     }
 }
@@ -892,7 +906,7 @@ static uint64_t stm32_rcc_read(void *opaque, hwaddr offset,
         case 4:
             return stm32_rcc_readw(opaque, offset);
         default:
-            stm32_unimp("Unimplemented: RCC read from register at offset %lld", offset);
+            qemu_log("Unimplemented: RCC read from register at offset 0x%lx\n", offset);
             return 0;
     }
 }
@@ -922,8 +936,8 @@ static const MemoryRegionOps stm32_rcc_ops = {
 
 static void stm32_rcc_reset(DeviceState *dev)
 {
-    Stm32f2xxRcc *s = FROM_SYSBUS(Stm32f2xxRcc, SYS_BUS_DEVICE(dev));
-
+    //Stm32f7xxRcc *s = FROM_SYSBUS(Stm32f7xxRcc, SYS_BUS_DEVICE(dev));
+    Stm32f7xxRcc *s = STM32F7XX_RCC(dev);
     stm32_rcc_RCC_CR_write(s, RCC_CR_RESET_VALUE, true);
     stm32_rcc_RCC_PLLCFGR_write(s, RCC_PLLCFGR_RESET_VALUE, true);
     stm32_rcc_RCC_CFGR_write(s, RCC_CFGR_RESET_VALUE, true);
@@ -937,22 +951,25 @@ static void stm32_rcc_reset(DeviceState *dev)
  * This updates the SysTick scales. */
 static void stm32_rcc_hclk_upd_irq_handler(void *opaque, int n, int level)
 {
-    Stm32f2xxRcc *s = (Stm32f2xxRcc *)opaque;
+    Stm32f7xxRcc *s = (Stm32f7xxRcc *)opaque;
 
     uint32_t hclk_freq = 0;
-    uint32_t ext_ref_freq = 0;
+    // PRM knocked this out, I want to avoid adding systick support
+    //uint32_t ext_ref_freq = 0;
     
     hclk_freq = clktree_get_output_freq(s->HCLK);
 
     /* Only update the scales if the frequency is not zero. */
     if (hclk_freq > 0) {
-        ext_ref_freq = hclk_freq / 8;
+        // PRM knocked this out, I want to avoid adding systick support
+        //ext_ref_freq = hclk_freq / 8;
 
         /* Update the scales - these are the ratio of QEMU clock ticks
          * (which is an unchanging number independent of the CPU frequency) to
          * system/external clock ticks.
          */
-        system_clock_scale = get_ticks_per_sec() / hclk_freq;
+        // PRM knocked this out, I want to avoid adding systick support
+        //system_clock_scale = get_ticks_per_sec() / hclk_freq;
     }
 
 #ifdef DEBUG_STM32_RCC
@@ -966,7 +983,7 @@ static void stm32_rcc_hclk_upd_irq_handler(void *opaque, int n, int level)
 /* DEVICE INITIALIZATION */
 
 /* Set up the clock tree */
-static void stm32_rcc_init_clk(Stm32f2xxRcc *s)
+static void stm32_rcc_init_clk(Stm32f7xxRcc *s)
 {
     int i;
     qemu_irq *hclk_upd_irq =
@@ -1087,7 +1104,7 @@ static void stm32_rcc_init_clk(Stm32f2xxRcc *s)
 
 static int stm32_rcc_init(SysBusDevice *dev)
 {
-    Stm32f2xxRcc *s = FROM_SYSBUS(Stm32f2xxRcc, dev);
+    Stm32f7xxRcc *s = STM32F7XX_RCC(dev);
 
     memory_region_init_io(&s->iomem, OBJECT(s), &stm32_rcc_ops, s,
                           "rcc", 0x40023BFF - 0x40023800 + 1);
@@ -1103,8 +1120,8 @@ static int stm32_rcc_init(SysBusDevice *dev)
 
 
 static Property stm32_rcc_properties[] = {
-    DEFINE_PROP_UINT32("osc_freq", Stm32f2xxRcc, osc_freq, 0),
-    DEFINE_PROP_UINT32("osc32_freq", Stm32f2xxRcc, osc32_freq, 0),
+    DEFINE_PROP_UINT32("osc_freq", Stm32f7xxRcc, osc_freq, 0),
+    DEFINE_PROP_UINT32("osc32_freq", Stm32f7xxRcc, osc32_freq, 0),
     DEFINE_PROP_END_OF_LIST()
 };
 
@@ -1112,17 +1129,18 @@ static Property stm32_rcc_properties[] = {
 static void stm32_rcc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
+    //SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = stm32_rcc_init;
+    dc->realize = (void*)stm32_rcc_init;
     dc->reset = stm32_rcc_reset;
-    dc->props = stm32_rcc_properties;
+    //dc->props = stm32_rcc_properties; PRM: this is part of the port from xPack.
+    device_class_set_props(dc, stm32_rcc_properties);
 }
 
 static TypeInfo stm32_rcc_info = {
-    .name  = "stm32f2xx_rcc",
+    .name  = TYPE_STM32F7XX_RCC,
     .parent = TYPE_SYS_BUS_DEVICE,
-    .instance_size  = sizeof(Stm32f2xxRcc),
+    .instance_size  = sizeof(Stm32f7xxRcc),
     .class_init = stm32_rcc_class_init
 };
 

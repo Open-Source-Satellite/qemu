@@ -50,6 +50,7 @@
 #include "qom/object.h"
 #include "hw/char/stm32f2xx_usart.h"
 #include "hw/arm/stm32f7xx_pwr.h"
+#include "hw/arm/stm32f7xx_rcc.h"
 
 #define STM_NUM_USARTS 6
 
@@ -92,12 +93,14 @@ struct MPS2MachineState {
     /* STM32 hardware */
     STM32F2XXUsartState usart[STM_NUM_USARTS];
     STM32F7XXPwrState   pwr;
+    Stm32f7xxRcc        rcc;
 };
 
 #define TYPE_MPS2_MACHINE "mps2"
 #define TYPE_MPS2_AN385_MACHINE MACHINE_TYPE_NAME("mps2-an385")
 #define TYPE_MPS2_AN386_MACHINE MACHINE_TYPE_NAME("mps2-an386")
-#define TYPE_MPS2_AN500_MACHINE MACHINE_TYPE_NAME("mps2-an500")
+//#define TYPE_MPS2_AN500_MACHINE MACHINE_TYPE_NAME("mps2-an500")
+#define TYPE_MPS2_AN500_MACHINE MACHINE_TYPE_NAME("stm32h753-nucleo")
 #define TYPE_MPS2_AN511_MACHINE MACHINE_TYPE_NAME("mps2-an511")
 
 OBJECT_DECLARE_TYPE(MPS2MachineState, MPS2MachineClass, MPS2_MACHINE)
@@ -132,9 +135,11 @@ static void mps2_common_init(MachineState *machine)
     MPS2MachineClass *mmc = MPS2_MACHINE_GET_CLASS(machine);
     MemoryRegion *system_memory = get_system_memory();
     MachineClass *mc = MACHINE_GET_CLASS(machine);
-    DeviceState *armv7m, *sccdev, *usart, *pwr;
+    DeviceState *armv7m, *sccdev, *usart, *pwr, *rcc;
     int i;
     SysBusDevice *busdev;
+    //CPUARMState *env;
+    
     
     if (strcmp(machine->cpu_type, mc->default_cpu_type) != 0) {
         error_report("This board can only be used with CPU %s",
@@ -213,6 +218,7 @@ static void mps2_common_init(MachineState *machine)
     }
 
     object_initialize_child(OBJECT(mms), "armv7m", &mms->armv7m, TYPE_ARMV7M);
+    
     armv7m = DEVICE(&mms->armv7m);
     switch (mmc->fpga_type) {
     case FPGA_AN385:
@@ -367,7 +373,8 @@ static void mps2_common_init(MachineState *machine)
     create_unimplemented_device("GPIOJ",       0x58022400, 0x00000400);
     create_unimplemented_device("GPIOK",       0x58022800, 0x00000400);
     create_unimplemented_device("RESERVED30",  0x58022C00, 0x00001800);
-    create_unimplemented_device("RCC",         0x58024400, 0x00000400);
+    // PRM NOTE: added emulation support below
+    //create_unimplemented_device("RCC",         0x58024400, 0x00000400);
     // PRM NOTE: emulated below
     //create_unimplemented_device("PWR",         0x58024800, 0x00000400);
     create_unimplemented_device("CRC",         0x58024C00, 0x00000400);
@@ -378,11 +385,10 @@ static void mps2_common_init(MachineState *machine)
     create_unimplemented_device("ADC3",        0x58026000, 0x00000400);
     create_unimplemented_device("HSEM",        0x58026400, 0x00000400);
     create_unimplemented_device("RAM ECC 3",   0x58027000, 0x00000400);
+    create_unimplemented_device("DBG",         0x5C001000, 0x00000400);
     
-    qemu_log("Created STM32 Devices");
-    /* PRM to add back in added STM Power management */
-    //DeviceState *pwr_dev = qdev_create(NULL, "f2xx_pwr");
-
+    qemu_log("Mapped unimplemented STM32 Devices\n");
+    
     // PRM initialise the PWR peripheral.
     object_initialize_child(OBJECT(mms), "pwr", &mms->pwr, TYPE_STM32F7XX_PWR);
 
@@ -403,14 +409,30 @@ static void mps2_common_init(MachineState *machine)
     sysbus_mmio_map(busdev, 0, 0x58024800);
 
     qemu_log("mapped pwr io mem space");
+
+
     
-    //stm32_init_periph(pwr_dev, STM32_RTC, 0x58024800, NULL);
-    //qdev_init_nofail(pwr_dev);
-    //sysbus_mmio_map(SYS_BUS_DEVICE(pwr_dev), 0, 0x58024800);
+    // PRM initialise the RCC peripheral
+    object_initialize_child(OBJECT(mms), "rcc", &mms->rcc, TYPE_STM32F7XX_RCC);
+    
+    if (!sysbus_realize(SYS_BUS_DEVICE(&mms->rcc), &error_fatal))
+    {
+        qemu_log("Can't initialise the RCC hardware\n");
+        return;
+    }
+    rcc = DEVICE(&(mms->rcc));
 
-    //qdev_prop_set_ptr((*cpu)->env.nvic, "stm32_pwr", pwr_dev);
+    qemu_log("rcc device is 0x%lx\n", (long unsigned int)rcc);
+    
+    busdev = SYS_BUS_DEVICE(rcc);
 
-    /* PRM end */
+    qemu_log("busdev device is 0x%lx\n", (long unsigned int)busdev);
+    
+    // map the io to physical addresses
+    sysbus_mmio_map(busdev, 0, 0x58024400);
+
+    qemu_log("mapped pwr io mem space");
+    
     
     switch (mmc->fpga_type) {
     case FPGA_AN385:
@@ -593,7 +615,7 @@ static void mps2_an500_class_init(ObjectClass *oc, void *data)
     MachineClass *mc = MACHINE_CLASS(oc);
     MPS2MachineClass *mmc = MPS2_MACHINE_CLASS(oc);
 
-    mc->desc = "ARM MPS2 with AN500 FPGA image for Cortex-M7";
+    mc->desc = "STM32H753ZI Nucleo Cortex-M7";
     mmc->fpga_type = FPGA_AN500;
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m7");
     mmc->scc_id = 0x41045000;
