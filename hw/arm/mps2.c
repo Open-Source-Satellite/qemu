@@ -135,11 +135,9 @@ static void mps2_common_init(MachineState *machine)
     MPS2MachineClass *mmc = MPS2_MACHINE_GET_CLASS(machine);
     MemoryRegion *system_memory = get_system_memory();
     MachineClass *mc = MACHINE_GET_CLASS(machine);
-    DeviceState *armv7m, *sccdev, *usart, *pwr, *rcc;
-    int i;
+    DeviceState *armv7m, *usart, *pwr, *rcc;
     SysBusDevice *busdev;
-    //CPUARMState *env;
-    
+    int i = 0;
     
     if (strcmp(machine->cpu_type, mc->default_cpu_type) != 0) {
         error_report("This board can only be used with CPU %s",
@@ -153,38 +151,6 @@ static void mps2_common_init(MachineState *machine)
         g_free(sz);
         exit(EXIT_FAILURE);
     }
-
-    /* The FPGA images have an odd combination of different RAMs,
-     * because in hardware they are different implementations and
-     * connected to different buses, giving varying performance/size
-     * tradeoffs. For QEMU they're all just RAM, though. We arbitrarily
-     * call the 16MB our "system memory", as it's the largest lump.
-     *
-     * AN385/AN386/AN511:
-     *  0x21000000 .. 0x21ffffff : PSRAM (16MB)
-     * AN385/AN386/AN500:
-     *  0x00000000 .. 0x003fffff : ZBT SSRAM1
-     *  0x00400000 .. 0x007fffff : mirror of ZBT SSRAM1
-     *  0x20000000 .. 0x203fffff : ZBT SSRAM 2&3
-     *  0x20400000 .. 0x207fffff : mirror of ZBT SSRAM 2&3
-     * AN385/AN386 only:
-     *  0x01000000 .. 0x01003fff : block RAM (16K)
-     *  0x01004000 .. 0x01007fff : mirror of above
-     *  0x01008000 .. 0x0100bfff : mirror of above
-     *  0x0100c000 .. 0x0100ffff : mirror of above
-     * AN511 only:
-     *  0x00000000 .. 0x0003ffff : FPGA block RAM
-     *  0x00400000 .. 0x007fffff : ZBT SSRAM1
-     *  0x20000000 .. 0x2001ffff : SRAM
-     *  0x20400000 .. 0x207fffff : ZBT SSRAM 2&3
-     * AN500 only:
-     *  0x60000000 .. 0x60ffffff : PSRAM (16MB)
-     *
-     * The AN385/AN386 has a feature where the lowest 16K can be mapped
-     * either to the bottom of the ZBT SSRAM1 or to the block RAM.
-     * This is of no use for QEMU so we don't implement it (as if
-     * zbt_boot_ctrl is always zero).
-     */
     memory_region_add_subregion(system_memory, mmc->psram_base, machine->ram);
 
     if (mmc->has_block_ram) {
@@ -197,41 +163,33 @@ static void mps2_common_init(MachineState *machine)
                        &mms->blockram, 0x0100c000);
     }
 
-    switch (mmc->fpga_type) {
-    case FPGA_AN385:
-    case FPGA_AN386:
-    case FPGA_AN500:
-        make_ram(&mms->ssram1, "mps.ssram1", 0x0, 0x400000);
-        make_ram_alias(&mms->ssram1_m, "mps.ssram1_m", &mms->ssram1, 0x400000);
-        make_ram(&mms->ssram23, "mps.ssram23", 0x20000000, 0x400000);
-        make_ram_alias(&mms->ssram23_m, "mps.ssram23_m",
-                       &mms->ssram23, 0x20400000);
-        break;
-    case FPGA_AN511:
-        make_ram(&mms->blockram, "mps.blockram", 0x0, 0x40000);
-        make_ram(&mms->ssram1, "mps.ssram1", 0x00400000, 0x00800000);
-        make_ram(&mms->sram, "mps.sram", 0x20000000, 0x20000);
-        make_ram(&mms->ssram23, "mps.ssram23", 0x20400000, 0x400000);
-        break;
-    default:
-        g_assert_not_reached();
-    }
+    /*
+     * Initialise the memory: TODO: these addresses are for the MPS2-AN500 chip.
+     * It is not urgent, but it would be good to switch these addresses so that
+     * QEMU is emulating the STM32 Flash memory for code execution. At the moment,
+     * I am changing the linker file for the Nucleo code so that it targets the MPS2
+     * memory space. The MPS2-AN500 memory space looks like this:
+     * 
+     * 0x00000000 .. 0x003fffff : ZBT SSRAM1
+     * 0x00400000 .. 0x007fffff : mirror of ZBT SSRAM1
+     * 0x20000000 .. 0x203fffff : ZBT SSRAM 2&3
+     * 0x20400000 .. 0x207fffff : mirror of ZBT SSRAM 2&3
+     */
+    make_ram(&mms->ssram1, "mps.ssram1", 0x0, 0x400000);
+    make_ram_alias(&mms->ssram1_m, "mps.ssram1_m", &mms->ssram1, 0x400000);
+    make_ram(&mms->ssram23, "mps.ssram23", 0x20000000, 0x400000);
+    make_ram_alias(&mms->ssram23_m, "mps.ssram23_m",
+                  &mms->ssram23, 0x20400000);
 
+    // Initialise the Cortex M7 core.
     object_initialize_child(OBJECT(mms), "armv7m", &mms->armv7m, TYPE_ARMV7M);
     
     armv7m = DEVICE(&mms->armv7m);
-    switch (mmc->fpga_type) {
-    case FPGA_AN385:
-    case FPGA_AN386:
-    case FPGA_AN500:
-        qdev_prop_set_uint32(armv7m, "num-irq", 32);
-        break;
-    case FPGA_AN511:
-        qdev_prop_set_uint32(armv7m, "num-irq", 64);
-        break;
-    default:
-        g_assert_not_reached();
-    }
+
+    // TODO: this is a hangup from the MPS2-AN500, it is surely wrong for the STM32H753ZI
+    qdev_prop_set_uint32(armv7m, "num-irq", 32);
+
+    // Get the Cortex-M7 core going.
     qdev_prop_set_string(armv7m, "cpu-type", machine->cpu_type);
     qdev_prop_set_bit(armv7m, "enable-bitband", true);
     object_property_set_link(OBJECT(&mms->armv7m), "memory",
@@ -239,7 +197,15 @@ static void mps2_common_init(MachineState *machine)
     sysbus_realize(SYS_BUS_DEVICE(&mms->armv7m), &error_fatal);
 
 
-    // Adding in devices for STM32H753ZI - there are loads
+    /* 
+     * These are all of the peripherals on the STM32H7 that are (as yet) unimplemented.
+     * In order to get code enough to emulate FreeRTOS correctly, I think we would need:
+     * timers
+     * systick (at least get the interrupt stuff working well)
+     * interrupts
+     *
+     * It would also be nice to emulate GPIO too
+     */
     create_unimplemented_device("TIM2",        0x40000000, 0x00000400);
     create_unimplemented_device("TIM3",        0x40000400, 0x00000400);
     create_unimplemented_device("TIM4",        0x40000800, 0x00000400);
@@ -387,9 +353,7 @@ static void mps2_common_init(MachineState *machine)
     create_unimplemented_device("RAM ECC 3",   0x58027000, 0x00000400);
     create_unimplemented_device("DBG",         0x5C001000, 0x00000400);
     
-    qemu_log("Mapped unimplemented STM32 Devices\n");
-    
-    // PRM initialise the PWR peripheral.
+    // Initialise the STM32 PWR peripheral.
     object_initialize_child(OBJECT(mms), "pwr", &mms->pwr, TYPE_STM32F7XX_PWR);
 
     if (!sysbus_realize(SYS_BUS_DEVICE(&mms->pwr), &error_fatal))
@@ -398,21 +362,15 @@ static void mps2_common_init(MachineState *machine)
         return;
     }
     pwr = DEVICE(&(mms->pwr));
-
-    qemu_log("pwr device is 0x%lx\n", (long unsigned int)pwr);
     
     busdev = SYS_BUS_DEVICE(pwr);
 
-    qemu_log("busdev device is 0x%lx\n", (long unsigned int)busdev);
-    
     // map the io to physical addresses
     sysbus_mmio_map(busdev, 0, 0x58024800);
 
-    qemu_log("mapped pwr io mem space");
-
 
     
-    // PRM initialise the RCC peripheral
+    // initialise the RCC peripheral
     object_initialize_child(OBJECT(mms), "rcc", &mms->rcc, TYPE_STM32F7XX_RCC);
     
     if (!sysbus_realize(SYS_BUS_DEVICE(&mms->rcc), &error_fatal))
@@ -422,150 +380,51 @@ static void mps2_common_init(MachineState *machine)
     }
     rcc = DEVICE(&(mms->rcc));
 
-    qemu_log("rcc device is 0x%lx\n", (long unsigned int)rcc);
-    
     busdev = SYS_BUS_DEVICE(rcc);
 
-    qemu_log("busdev device is 0x%lx\n", (long unsigned int)busdev);
-    
     // map the io to physical addresses
     sysbus_mmio_map(busdev, 0, 0x58024400);
+    
 
-    qemu_log("mapped pwr io mem space");
-    
-    
-    switch (mmc->fpga_type) {
-    case FPGA_AN385:
-    case FPGA_AN386:
-    case FPGA_AN500:
-    {
-        for (i = 0; i < STM_NUM_USARTS; i++)
+    // USART initialisation
+    static const uint32_t usart_addr[STM_NUM_USARTS] = {0x40011000, 0x40004400,
+                                                        0x40004800, 0x40004C00,
+                                                        0x40005000, 0x40011400};
+     // Loop around,  initialising the UARTS
+    for (i=0 ; i<STM_NUM_USARTS ; i++)
+    {       
+        // initialise the child object for the USARTS
+        object_initialize_child(OBJECT(mms), "usart[*]", &mms->usart[i], TYPE_STM32F2XX_USART);
+
+        // get a handle for the device
+        usart = DEVICE(&(mms->usart[i]));
+
+        // PRM NOTE: only serial device 0 is actually connected to anything.
+        // At the moment, I am unsure of how to connect other serial devices.
+        // I think it is possible through the QEMU command line but I am not sure how?
+        // On the Nucleo STM32H753ZI board, USART3 (offset 2 into usart_addr) is the
+        // one that connects through STLink to a PC UART.
+        if (i==2)
         {
-            static const uint32_t usart_addr[STM_NUM_USARTS] = {0x40011000, 0x40004400,
-                                              0x40004800, 0x40004C00,
-                                              0x40005000, 0x40011400};
-            
-            // initialise the child object for the USARTS
-            object_initialize_child(OBJECT(mms), "usart[*]", &mms->usart[i], TYPE_STM32F2XX_USART);
-
-            // get a handle for the device
-            usart = DEVICE(&(mms->usart[i]));
-
-            // PRM NOTE: only serial device 0 is actually connected to anything.
-            // At the moment, I am unsure of how to connect other serial devices.
-            // I think it is possible through the QEMU command line but I am not sure how?
-            // On the Nucleo STM32H753ZI board, USART3 (offset 2 into usart_addr) is the
-            // one that connects through STLink to a PC UART.
-            if (i==2)
-            {
-                qdev_prop_set_chr(usart, "chardev", serial_hd(0));
-            }
-            if (!sysbus_realize(SYS_BUS_DEVICE(&mms->usart[i]), &error_fatal))
-            {
-                qemu_log("Can't initialise the USART number %d\n", i+1 );
-                return;
-            }
-            busdev = SYS_BUS_DEVICE(usart);
-
-            // map the io to physical addresses
-            sysbus_mmio_map(busdev, 0,usart_addr[i]);
+            qdev_prop_set_chr(usart, "chardev", serial_hd(0));
         }
-        break;
-    }
-    case FPGA_AN511:
-    {
-        /* The overflow IRQs for all UARTs are ORed together.
-         * Tx and Rx IRQs for each UART are ORed together.
-         */
-        Object *orgate;
-        DeviceState *orgate_dev;
-
-        orgate = object_new(TYPE_OR_IRQ);
-        object_property_set_int(orgate, "num-lines", 10, &error_fatal);
-        qdev_realize(DEVICE(orgate), NULL, &error_fatal);
-        orgate_dev = DEVICE(orgate);
-        qdev_connect_gpio_out(orgate_dev, 0, qdev_get_gpio_in(armv7m, 12));
-        break;
-    }
-    default:
-        g_assert_not_reached();
-    }
-    for (i = 0; i < 4; i++) {
-        static const hwaddr gpiobase[] = {0x40010000, 0x40011000,
-                                          0x40012000, 0x40013000};
-        create_unimplemented_device("cmsdk-ahb-gpio", gpiobase[i], 0x1000);
-    }
-
-    /* CMSDK APB subsystem */
-    cmsdk_apb_timer_create(0x40000000, qdev_get_gpio_in(armv7m, 8), SYSCLK_FRQ);
-    cmsdk_apb_timer_create(0x40001000, qdev_get_gpio_in(armv7m, 9), SYSCLK_FRQ);
-    object_initialize_child(OBJECT(mms), "dualtimer", &mms->dualtimer,
-                            TYPE_CMSDK_APB_DUALTIMER);
-    qdev_prop_set_uint32(DEVICE(&mms->dualtimer), "pclk-frq", SYSCLK_FRQ);
-    sysbus_realize(SYS_BUS_DEVICE(&mms->dualtimer), &error_fatal);
-    sysbus_connect_irq(SYS_BUS_DEVICE(&mms->dualtimer), 0,
-                       qdev_get_gpio_in(armv7m, 10));
-    sysbus_mmio_map(SYS_BUS_DEVICE(&mms->dualtimer), 0, 0x40002000);
-    object_initialize_child(OBJECT(mms), "watchdog", &mms->watchdog,
-                            TYPE_CMSDK_APB_WATCHDOG);
-    qdev_prop_set_uint32(DEVICE(&mms->watchdog), "wdogclk-frq", SYSCLK_FRQ);
-    sysbus_realize(SYS_BUS_DEVICE(&mms->watchdog), &error_fatal);
-    sysbus_connect_irq(SYS_BUS_DEVICE(&mms->watchdog), 0,
-                       qdev_get_gpio_in_named(armv7m, "NMI", 0));
-    sysbus_mmio_map(SYS_BUS_DEVICE(&mms->watchdog), 0, 0x40008000);
-
-    /* FPGA APB subsystem */
-    object_initialize_child(OBJECT(mms), "scc", &mms->scc, TYPE_MPS2_SCC);
-    sccdev = DEVICE(&mms->scc);
-    qdev_prop_set_uint32(sccdev, "scc-cfg4", 0x2);
-    qdev_prop_set_uint32(sccdev, "scc-aid", 0x00200008);
-    qdev_prop_set_uint32(sccdev, "scc-id", mmc->scc_id);
-    sysbus_realize(SYS_BUS_DEVICE(&mms->scc), &error_fatal);
-    sysbus_mmio_map(SYS_BUS_DEVICE(sccdev), 0, 0x4002f000);
-    object_initialize_child(OBJECT(mms), "fpgaio",
-                            &mms->fpgaio, TYPE_MPS2_FPGAIO);
-    qdev_prop_set_uint32(DEVICE(&mms->fpgaio), "prescale-clk", 25000000);
-    sysbus_realize(SYS_BUS_DEVICE(&mms->fpgaio), &error_fatal);
-    sysbus_mmio_map(SYS_BUS_DEVICE(&mms->fpgaio), 0, 0x40028000);
-    sysbus_create_simple(TYPE_PL022, 0x40025000,        /* External ADC */
-                         qdev_get_gpio_in(armv7m, 22));
-    for (i = 0; i < 2; i++) {
-        static const int spi_irqno[] = {11, 24};
-        static const hwaddr spibase[] = {0x40020000,    /* APB */
-                                         0x40021000,    /* LCD */
-                                         0x40026000,    /* Shield0 */
-                                         0x40027000};   /* Shield1 */
-        DeviceState *orgate_dev;
-        Object *orgate;
-        int j;
-
-        orgate = object_new(TYPE_OR_IRQ);
-        object_property_set_int(orgate, "num-lines", 2, &error_fatal);
-        orgate_dev = DEVICE(orgate);
-        qdev_realize(orgate_dev, NULL, &error_fatal);
-        qdev_connect_gpio_out(orgate_dev, 0,
-                              qdev_get_gpio_in(armv7m, spi_irqno[i]));
-        for (j = 0; j < 2; j++) {
-            sysbus_create_simple(TYPE_PL022, spibase[2 * i + j],
-                                 qdev_get_gpio_in(orgate_dev, j));
+        if (!sysbus_realize(SYS_BUS_DEVICE(&mms->usart[i]), &error_fatal))
+        {
+            qemu_log("Can't initialise the USART number %d\n", i+1 );
+            return;
         }
-    }
-    for (i = 0; i < 4; i++) {
-        static const hwaddr i2cbase[] = {0x40022000,    /* Touch */
-                                         0x40023000,    /* Audio */
-                                         0x40029000,    /* Shield0 */
-                                         0x4002a000};   /* Shield1 */
-        sysbus_create_simple(TYPE_ARM_SBCON_I2C, i2cbase[i], NULL);
-    }
-    create_unimplemented_device("i2s", 0x40024000, 0x400);
 
-    /* In hardware this is a LAN9220; the LAN9118 is software compatible
-     * except that it doesn't support the checksum-offload feature.
-     */
-    lan9118_init(&nd_table[0], mmc->ethernet_base,
-                 qdev_get_gpio_in(armv7m,
-                                  mmc->fpga_type == FPGA_AN511 ? 47 : 13));
+        busdev = SYS_BUS_DEVICE(usart);
 
+        // map the io to physical addresses
+        sysbus_mmio_map(busdev, 0,usart_addr[i]);
+    }
+
+    // The Below code is all MPS2 code.
+    
+
+    // END OF MPS2 code
+    
     system_clock_scale = NANOSECONDS_PER_SECOND / SYSCLK_FRQ;
 
     armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,
@@ -582,33 +441,6 @@ static void mps2_class_init(ObjectClass *oc, void *data)
     mc->default_ram_id = "mps.ram";
 }
 
-static void mps2_an385_class_init(ObjectClass *oc, void *data)
-{
-    MachineClass *mc = MACHINE_CLASS(oc);
-    MPS2MachineClass *mmc = MPS2_MACHINE_CLASS(oc);
-
-    mc->desc = "ARM MPS2 with AN385 FPGA image for Cortex-M3";
-    mmc->fpga_type = FPGA_AN385;
-    mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m3");
-    mmc->scc_id = 0x41043850;
-    mmc->psram_base = 0x21000000;
-    mmc->ethernet_base = 0x40200000;
-    mmc->has_block_ram = true;
-}
-
-static void mps2_an386_class_init(ObjectClass *oc, void *data)
-{
-    MachineClass *mc = MACHINE_CLASS(oc);
-    MPS2MachineClass *mmc = MPS2_MACHINE_CLASS(oc);
-
-    mc->desc = "ARM MPS2 with AN386 FPGA image for Cortex-M4";
-    mmc->fpga_type = FPGA_AN386;
-    mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m4");
-    mmc->scc_id = 0x41043860;
-    mmc->psram_base = 0x21000000;
-    mmc->ethernet_base = 0x40200000;
-    mmc->has_block_ram = true;
-}
 
 static void mps2_an500_class_init(ObjectClass *oc, void *data)
 {
@@ -624,19 +456,6 @@ static void mps2_an500_class_init(ObjectClass *oc, void *data)
     mmc->has_block_ram = false;
 }
 
-static void mps2_an511_class_init(ObjectClass *oc, void *data)
-{
-    MachineClass *mc = MACHINE_CLASS(oc);
-    MPS2MachineClass *mmc = MPS2_MACHINE_CLASS(oc);
-
-    mc->desc = "ARM MPS2 with AN511 DesignStart FPGA image for Cortex-M3";
-    mmc->fpga_type = FPGA_AN511;
-    mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m3");
-    mmc->scc_id = 0x41045110;
-    mmc->psram_base = 0x21000000;
-    mmc->ethernet_base = 0x40200000;
-    mmc->has_block_ram = false;
-}
 
 static const TypeInfo mps2_info = {
     .name = TYPE_MPS2_MACHINE,
@@ -647,37 +466,18 @@ static const TypeInfo mps2_info = {
     .class_init = mps2_class_init,
 };
 
-static const TypeInfo mps2_an385_info = {
-    .name = TYPE_MPS2_AN385_MACHINE,
-    .parent = TYPE_MPS2_MACHINE,
-    .class_init = mps2_an385_class_init,
-};
-
-static const TypeInfo mps2_an386_info = {
-    .name = TYPE_MPS2_AN386_MACHINE,
-    .parent = TYPE_MPS2_MACHINE,
-    .class_init = mps2_an386_class_init,
-};
-
 static const TypeInfo mps2_an500_info = {
     .name = TYPE_MPS2_AN500_MACHINE,
     .parent = TYPE_MPS2_MACHINE,
     .class_init = mps2_an500_class_init,
 };
 
-static const TypeInfo mps2_an511_info = {
-    .name = TYPE_MPS2_AN511_MACHINE,
-    .parent = TYPE_MPS2_MACHINE,
-    .class_init = mps2_an511_class_init,
-};
+
 
 static void mps2_machine_init(void)
 {
     type_register_static(&mps2_info);
-    type_register_static(&mps2_an385_info);
-    type_register_static(&mps2_an386_info);
     type_register_static(&mps2_an500_info);
-    type_register_static(&mps2_an511_info);
 }
 
 type_init(mps2_machine_init);
