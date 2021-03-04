@@ -1,28 +1,45 @@
-/*
- * ARM V2M MPS2 board emulation.
+/***********************************************************************************
+ *  @file stm32h753zi.c
+ ***********************************************************************************
+ *   _  _____ ____  ____  _____ 
+ *  | |/ /_ _/ ___||  _ \| ____|
+ *  | ' / | |\___ \| |_) |  _|  
+ *  | . \ | | ___) |  __/| |___ 
+ *  |_|\_\___|____/|_|   |_____|
  *
- * Copyright (c) 2017 Linaro Limited
- * Written by Peter Maydell
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License version 2 or
- *  (at your option) any later version.
- */
-
-/* The MPS2 and MPS2+ dev boards are FPGA based (the 2+ has a bigger
- * FPGA but is otherwise the same as the 2). Since the CPU itself
- * and most of the devices are in the FPGA, the details of the board
- * as seen by the guest depend significantly on the FPGA image.
- * We model the following FPGA images:
- *  "mps2-an385" -- Cortex-M3 as documented in ARM Application Note AN385
- *  "mps2-an386" -- Cortex-M4 as documented in ARM Application Note AN386
- *  "mps2-an500" -- Cortex-M7 as documented in ARM Application Note AN500
- *  "mps2-an511" -- Cortex-M3 'DesignStart' as documented in AN511
- *
- * Links to the TRM for the board itself and to the various Application
- * Notes which document the FPGA images can be found here:
- *   https://developer.arm.com/products/system-design/development-boards/cortex-m-prototyping-system
- */
+ ***********************************************************************************
+ *  Copyright (c) 2021 KISPE Space Systems Ltd.
+ *  
+ *  Permission is hereby granted, free of charge, to any person obtaining a copy
+ *  of this software and associated documentation files (the "Software"), to deal
+ *  in the Software without restriction, including without limitation the rights
+ *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ *  copies of the Software, and to permit persons to whom the Software is
+ *  furnished to do so, subject to the following conditions:
+ *  
+ *  The above copyright notice and this permission notice shall be included in all
+ *  copies or substantial portions of the Software.
+ *  
+ *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ *  SOFTWARE.
+ ***********************************************************************************                      
+ *  This code has been written to emulate the STM32H753ZI chip as running on the
+ *  STM32H753ZI Nucleo board. The emulation is currently basic, including USART, RCC &
+ *  PWR peripherals.
+ *  Code can be built under the STM32Cube IDE (as can be used for the Nucleo board) and
+ *  then modified slightly in order to run under this QEMU emulation of the board and
+ *  System On a Chip processor. USART3 is attached to QEMU stdio in order to emulate
+ *  the ST Link UART output that can be seen on the real hardware. This code is based
+ *  upon the MPS2-AN500 code written by Peter Maydell with STM peripherals that are 
+ *  sourced from the XPack qemu fork that specialises in the emulation of STM micros.
+ *  It is forked from QEMU 5.2 where Cortex M7 emulation was added to QEMU.        
+ *  @author: Paul Madle                     
+ ***********************************************************************************/
 
 #include "qemu/osdep.h"
 #include "qemu/units.h"
@@ -37,16 +54,7 @@
 #include "exec/address-spaces.h"
 #include "sysemu/sysemu.h"
 #include "hw/misc/unimp.h"
-#include "hw/char/cmsdk-apb-uart.h"
-#include "hw/timer/cmsdk-apb-timer.h"
-#include "hw/timer/cmsdk-apb-dualtimer.h"
-#include "hw/misc/mps2-scc.h"
-#include "hw/misc/mps2-fpgaio.h"
-#include "hw/ssi/pl022.h"
-#include "hw/i2c/arm_sbcon_i2c.h"
-#include "hw/net/lan9118.h"
 #include "net/net.h"
-#include "hw/watchdog/cmsdk-apb-watchdog.h"
 #include "qom/object.h"
 #include "hw/char/stm32f2xx_usart.h"
 #include "hw/arm/stm32f7xx_pwr.h"
@@ -54,23 +62,11 @@
 
 #define STM_NUM_USARTS 6
 
-typedef enum MPS2FPGAType {
-    FPGA_AN385,
-    FPGA_AN386,
-    FPGA_AN500,
-    FPGA_AN511,
-} MPS2FPGAType;
-
-struct MPS2MachineClass {
+struct STM32H753MachineClass {
     MachineClass parent;
-    MPS2FPGAType fpga_type;
-    uint32_t scc_id;
-    bool has_block_ram;
-    hwaddr ethernet_base;
-    hwaddr psram_base;
 };
 
-struct MPS2MachineState {
+struct STM32H753MachineState {
     MachineState parent;
 
     ARMv7MState armv7m;
@@ -78,32 +74,18 @@ struct MPS2MachineState {
     MemoryRegion ssram1_m;
     MemoryRegion ssram23;
     MemoryRegion ssram23_m;
-    MemoryRegion blockram;
-    MemoryRegion blockram_m1;
-    MemoryRegion blockram_m2;
-    MemoryRegion blockram_m3;
     MemoryRegion sram;
-    /* FPGA APB subsystem */
-    MPS2SCC scc;
-    MPS2FPGAIO fpgaio;
-    /* CMSDK APB subsystem */
-    CMSDKAPBDualTimer dualtimer;
-    CMSDKAPBWatchdog watchdog;
-
-    /* STM32 hardware */
+    
+    /* emulated STM32 peripheral hardware */
     STM32F2XXUsartState usart[STM_NUM_USARTS];
     STM32F7XXPwrState   pwr;
     Stm32f7xxRcc        rcc;
 };
 
-#define TYPE_MPS2_MACHINE "mps2"
-#define TYPE_MPS2_AN385_MACHINE MACHINE_TYPE_NAME("mps2-an385")
-#define TYPE_MPS2_AN386_MACHINE MACHINE_TYPE_NAME("mps2-an386")
-//#define TYPE_MPS2_AN500_MACHINE MACHINE_TYPE_NAME("mps2-an500")
-#define TYPE_MPS2_AN500_MACHINE MACHINE_TYPE_NAME("stm32h753-nucleo")
-#define TYPE_MPS2_AN511_MACHINE MACHINE_TYPE_NAME("mps2-an511")
+#define TYPE_STM32H753_MACHINE "stm32h753"
+#define TYPE_STM32H753_MACHINE_NAME MACHINE_TYPE_NAME("stm32h753-nucleo")
 
-OBJECT_DECLARE_TYPE(MPS2MachineState, MPS2MachineClass, MPS2_MACHINE)
+OBJECT_DECLARE_TYPE(STM32H753MachineState, STM32H753MachineClass, STM32H753_MACHINE)
 
 /* Main SYSCLK frequency in Hz */
 #define SYSCLK_FRQ 25000000
@@ -129,10 +111,9 @@ static void make_ram_alias(MemoryRegion *mr, const char *name,
     memory_region_add_subregion(get_system_memory(), base, mr);
 }
 
-static void mps2_common_init(MachineState *machine)
+static void stm32h753_common_init(MachineState *machine)
 {
-    MPS2MachineState *mms = MPS2_MACHINE(machine);
-    MPS2MachineClass *mmc = MPS2_MACHINE_GET_CLASS(machine);
+    STM32H753MachineState *mms = STM32H753_MACHINE(machine);
     MemoryRegion *system_memory = get_system_memory();
     MachineClass *mc = MACHINE_GET_CLASS(machine);
     DeviceState *armv7m, *usart, *pwr, *rcc;
@@ -150,17 +131,6 @@ static void mps2_common_init(MachineState *machine)
         error_report("Invalid RAM size, should be %s", sz);
         g_free(sz);
         exit(EXIT_FAILURE);
-    }
-    memory_region_add_subregion(system_memory, mmc->psram_base, machine->ram);
-
-    if (mmc->has_block_ram) {
-        make_ram(&mms->blockram, "mps.blockram", 0x01000000, 0x4000);
-        make_ram_alias(&mms->blockram_m1, "mps.blockram_m1",
-                       &mms->blockram, 0x01004000);
-        make_ram_alias(&mms->blockram_m2, "mps.blockram_m2",
-                       &mms->blockram, 0x01008000);
-        make_ram_alias(&mms->blockram_m3, "mps.blockram_m3",
-                       &mms->blockram, 0x0100c000);
     }
 
     /*
@@ -204,7 +174,7 @@ static void mps2_common_init(MachineState *machine)
      * systick (at least get the interrupt stuff working well)
      * interrupts
      *
-     * It would also be nice to emulate GPIO too
+     * It would also be nice to emulate GPIO too (maybe with a graphical display that shows LEDs etc?).
      */
     create_unimplemented_device("TIM2",        0x40000000, 0x00000400);
     create_unimplemented_device("TIM3",        0x40000400, 0x00000400);
@@ -420,64 +390,53 @@ static void mps2_common_init(MachineState *machine)
         sysbus_mmio_map(busdev, 0,usart_addr[i]);
     }
 
-    // The Below code is all MPS2 code.
-    
-
-    // END OF MPS2 code
-    
     system_clock_scale = NANOSECONDS_PER_SECOND / SYSCLK_FRQ;
 
     armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,
                        0x400000);
 }
 
-static void mps2_class_init(ObjectClass *oc, void *data)
+static void stm32h753_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 
-    mc->init = mps2_common_init;
+    mc->init = stm32h753_common_init;
     mc->max_cpus = 1;
     mc->default_ram_size = 16 * MiB;
     mc->default_ram_id = "mps.ram";
 }
 
 
-static void mps2_an500_class_init(ObjectClass *oc, void *data)
+static void stm32h753_nucleo_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
-    MPS2MachineClass *mmc = MPS2_MACHINE_CLASS(oc);
 
     mc->desc = "STM32H753ZI Nucleo Cortex-M7";
-    mmc->fpga_type = FPGA_AN500;
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m7");
-    mmc->scc_id = 0x41045000;
-    mmc->psram_base = 0x60000000;
-    mmc->ethernet_base = 0xa0000000;
-    mmc->has_block_ram = false;
 }
 
 
-static const TypeInfo mps2_info = {
-    .name = TYPE_MPS2_MACHINE,
+static const TypeInfo stm32h753_info = {
+    .name = TYPE_STM32H753_MACHINE,
     .parent = TYPE_MACHINE,
     .abstract = true,
-    .instance_size = sizeof(MPS2MachineState),
-    .class_size = sizeof(MPS2MachineClass),
-    .class_init = mps2_class_init,
+    .instance_size = sizeof(STM32H753MachineState),
+    .class_size = sizeof(STM32H753MachineClass),
+    .class_init = stm32h753_class_init,
 };
 
-static const TypeInfo mps2_an500_info = {
-    .name = TYPE_MPS2_AN500_MACHINE,
-    .parent = TYPE_MPS2_MACHINE,
-    .class_init = mps2_an500_class_init,
+static const TypeInfo stm32h753_nucleo_info = {
+    .name = TYPE_STM32H753_MACHINE_NAME,
+    .parent = TYPE_STM32H753_MACHINE,
+    .class_init = stm32h753_nucleo_class_init,
 };
 
 
 
-static void mps2_machine_init(void)
+static void stm32h753_machine_init(void)
 {
-    type_register_static(&mps2_info);
-    type_register_static(&mps2_an500_info);
+    type_register_static(&stm32h753_info);
+    type_register_static(&stm32h753_nucleo_info);
 }
 
-type_init(mps2_machine_init);
+type_init(stm32h753_machine_init);
