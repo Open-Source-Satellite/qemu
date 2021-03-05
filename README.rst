@@ -1,6 +1,78 @@
-===========
-QEMU README
-===========
+===============
+OSSAT QEMU FORK
+===============
+
+Welcome to the OSSAT QEMU Fork that has been created specifically for
+OSSAT `<https://opensourcesatellite.org>`_.
+
+We are trying to develop a spacecraft platform including all design
+artefacts (software, hardware, mechanical). We are pledging to
+issue this design freely and openly on the internet 1 year from the
+first spacecraft launch.
+
+As part of this development, we are engaging developers to create
+on board software, in order to support this development, we figured
+that we would need an emulator for our preferred main processor
+(STM32H753ZI) and one that is open source... QEMU is a good fit!
+
+Whilst QEMU emulates lots of ARM processors, support for Cortex-M7
+is since release 5 (2019) and there are only a few boards supported.
+Therefore, we decided to fork version 5.2.0 and then modify it to add
+explicit support for the ST Nucleo-H753ZI board. This is a basic
+evaluation board that includes the ST-Link debugging hardware. So,
+you can take code built within the STM32Cube environment, add some
+small modifications to get it running under QEMU on your PC,
+with no actual STM hardware :)
+This also includes support for GDB debugging :) :)
+
+Getting hold of the code
+========================
+
+Since the code is branched from v5.2.0 of QEMU, you'll need to clone
+as follows:
+
+.. code-block:: shell
+
+   git clone --branch OSSAT_STM32_MODS https://github.com/Open-Source-Satellite/qemu.git
+
+This is the development branch, I have also been releasing code too,
+the OSSAT releases are available from GitHub, the release tags are 
+formatted as:
+
+.. code-block:: shell
+
+  OSSAT_STM32_VX.X.X
+
+NOTE: I am attempting to add the Windows and Linux executables to each
+release, so if you just want to use the executable without building it,
+just download the executable from the latest release
+
+NOTE: On Linux: QEMU is shipped with many Linux distributions. Therefore,
+you need to replace the qemu-system-arm executable within the /usr/bin
+directory in order to use this OSSAT version.
+
+   
+Building
+========
+
+QEMU is multi-platform software intended to be buildable on all modern
+Linux platforms, OS-X, Win32 (via the Mingw64 toolchain) and a variety
+of other UNIX targets. The simple steps to build QEMU are:
+
+
+.. code-block:: shell
+
+  mkdir build
+  cd build
+  ../configure
+  make
+
+Additional information can also be found online via the QEMU website:
+
+* `<https://qemu.org/Hosts/Linux>`_
+* `<https://qemu.org/Hosts/Mac>`_
+* `<https://qemu.org/Hosts/W32>`_
+
 
 QEMU is a generic and open source machine & userspace emulator and
 virtualizer.
@@ -30,129 +102,60 @@ open source applications such as oVirt, OpenStack and virt-manager.
 QEMU as a whole is released under the GNU General Public License,
 version 2. For full licensing details, consult the LICENSE file.
 
+Using QEMU for OSSAT
+====================
 
-Building
-========
+In order to use the OSSAT fork of QEMU, you'll need to:
 
-QEMU is multi-platform software intended to be buildable on all modern
-Linux platforms, OS-X, Win32 (via the Mingw64 toolchain) and a variety
-of other UNIX targets. The simple steps to build QEMU are:
-
-
-.. code-block:: shell
-
-  mkdir build
-  cd build
-  ../configure
-  make
-
-Additional information can also be found online via the QEMU website:
-
-* `<https://qemu.org/Hosts/Linux>`_
-* `<https://qemu.org/Hosts/Mac>`_
-* `<https://qemu.org/Hosts/W32>`_
-
-
-Submitting patches
-==================
-
-The QEMU source code is maintained under the GIT version control system.
+* Ensure that the executable qemu-system-arm from the release is in the
+  /usr/bin directory
+* Run the following command line
 
 .. code-block:: shell
 
-   git clone https://git.qemu.org/git/qemu.git
+  qemu-system-arm -kernel <name_of_elf_file>.elf -M stm32h753-nucleo -nographic
 
-When submitting patches, one common approach is to use 'git
-format-patch' and/or 'git send-email' to format & send the mail to the
-qemu-devel@nongnu.org mailing list. All patches submitted must contain
-a 'Signed-off-by' line from the author. Patches should follow the
-guidelines set out in the CODING_STYLE.rst file.
+explaining this command line:
 
-Additional information on submitting patches can be found online via
-the QEMU website
+* qemu-system-arm: This is the QEMU executable for ARM emulation
+* -kernel: This specifies the elf file that will be loaded into the emulated
+  processors memory before resetting and running the virtual target processor.
+  (see the "Related Repos" section later on for a Repo containing STM32Cube
+  code that can build for the real and virtual STM32 target).
+* -M: This specifies the board that QEMU is emulating. Note: this is where
+  our customisation is evident. We have customised it to emulate the
+  STM32H753ZI Nucleo board.
+* -nographic since this is an embedded target with no display, there are
+  no graphics and all serial output (that is routed through USART3 on the
+  real target) is routed to the terminal running QEMU.
 
-* `<https://qemu.org/Contribute/SubmitAPatch>`_
-* `<https://qemu.org/Contribute/TrivialPatches>`_
+* -s -S: these are optional, allowing for gdb debugging. They basically
+  tell the emulator to halt on the first instruction and wait for a GDB
+  connection.
 
-The QEMU website is also maintained under source control.
 
-.. code-block:: shell
+Related Repos
+=============
 
-  git clone https://git.qemu.org/git/qemu-web.git
+There is a Unit Test Template project that can be used to build code for the
+STM32H753ZI processor and run the code on either a real (Nucleo) target OR
+the QEMU target.
 
-* `<https://www.qemu.org/2017/02/04/the-new-qemu-website-is-up/>`_
+See this here: https://github.com/Open-Source-Satellite/STM32UnitTestTemplate
 
-A 'git-publish' utility was created to make above process less
-cumbersome, and is highly recommended for making regular contributions,
-or even just for sending consecutive patch series revisions. It also
-requires a working 'git send-email' setup, and by default doesn't
-automate everything, so you may want to go through the above steps
-manually for once.
+Contributing
+============
 
-For installation instructions, please go to
-
-*  `<https://github.com/stefanha/git-publish>`_
-
-The workflow with 'git-publish' is:
-
-.. code-block:: shell
-
-  $ git checkout master -b my-feature
-  $ # work on new commits, add your 'Signed-off-by' lines to each
-  $ git publish
-
-Your patch series will be sent and tagged as my-feature-v1 if you need to refer
-back to it in the future.
-
-Sending v2:
-
-.. code-block:: shell
-
-  $ git checkout my-feature # same topic branch
-  $ # making changes to the commits (using 'git rebase', for example)
-  $ git publish
-
-Your patch series will be sent with 'v2' tag in the subject and the git tip
-will be tagged as my-feature-v2.
+See the GitHub Issues for a list of enhancements... If you want to contribute
+Please review the enhancements and contact pmadle@kispe.co.uk
 
 Bug reporting
 =============
 
-The QEMU project uses Launchpad as its primary upstream bug tracker. Bugs
-found when running code built from QEMU git or upstream released sources
-should be reported via:
-
-* `<https://bugs.launchpad.net/qemu/>`_
-
-If using QEMU via an operating system vendor pre-built binary package, it
-is preferable to report bugs to the vendor's own bug tracker first. If
-the bug is also known to affect latest upstream code, it can also be
-reported via launchpad.
-
-For additional information on bug reporting consult:
-
-* `<https://qemu.org/Contribute/ReportABug>`_
-
-
-ChangeLog
-=========
-
-For version history and release notes, please visit
-`<https://wiki.qemu.org/ChangeLog/>`_ or look at the git history for
-more detailed information.
-
+Please use the GitHub Issues to log any issues you find.
 
 Contact
 =======
 
-The QEMU community can be contacted in a number of ways, with the two
-main methods being email and IRC
-
-* `<mailto:qemu-devel@nongnu.org>`_
-* `<https://lists.nongnu.org/mailman/listinfo/qemu-devel>`_
-* #qemu on irc.oftc.net
-
-Information on additional methods of contacting the community can be
-found online via the QEMU website:
-
-* `<https://qemu.org/Contribute/StartHere>`_
+To register to collaborate on OSSAT, go to https://opensourcesatellite.org/register
+To contact/hurl abuse at the main author of this fork, please email pmadle@kispe.co.uk.
