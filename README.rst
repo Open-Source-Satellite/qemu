@@ -112,7 +112,7 @@ In order to use the OSSAT fork of QEMU, you'll need to:
 * Run the following command line
 
 .. code-block:: shell
-  qemu-system-arm -kernel <name_of_elf_file>.elf -M stm32h753-nucleo -nographic
+  qemu-system-arm -kernel <name_of_elf_file>.elf -M stm32h753-nucleo -nographic -d guest_errors -D ./log_file.txt
 
 explaining this command line:
 
@@ -127,6 +127,9 @@ explaining this command line:
 * -nographic since this is an embedded target with no display, there are
   no graphics and all serial output (that is routed through USART3 on the
   real target) is routed to the terminal running QEMU.
+* -d guest_errors sets what errors get put into the QEMU log file.
+* -D this is the path to a log file that qemu generates as it performs its
+  emulation.
 
 * -s -S: these are optional, allowing for gdb debugging. They basically
   tell the emulator to halt on the first instruction and wait for a GDB
