@@ -12,7 +12,7 @@ first spacecraft launch.
 
 As part of this development, we are engaging developers to create
 on board software, in order to support this development, we figured
-that we would need an emulator for our preferred main processor
+that we would need a emulator for our preferred main processor
 (STM32H753ZI) and one that is open source... QEMU is a good fit!
 
 Whilst QEMU emulates lots of ARM processors, support for Cortex-M7
@@ -112,8 +112,8 @@ In order to use the OSSAT fork of QEMU, you'll need to:
 * Run the following command line
 
 .. code-block:: shell
-
-  qemu-system-arm -kernel <name_of_elf_file>.elf -M stm32h753-nucleo -nographic
+  
+  qemu-system-arm -kernel <name_of_elf_file>.elf -M stm32h753-nucleo -nographic -d guest_errors -D ./log_file.txt
 
 explaining this command line:
 
@@ -128,6 +128,9 @@ explaining this command line:
 * -nographic since this is an embedded target with no display, there are
   no graphics and all serial output (that is routed through USART3 on the
   real target) is routed to the terminal running QEMU.
+* -d guest_errors sets what errors get put into the QEMU log file.
+* -D this is the path to a log file that qemu generates as it performs its
+  emulation.
 
 * -s -S: these are optional, allowing for gdb debugging. They basically
   tell the emulator to halt on the first instruction and wait for a GDB
@@ -140,8 +143,6 @@ Related Repos
 There is a Unit Test Template project that can be used to build code for the
 STM32H753ZI processor and run the code on either a real (Nucleo) target OR
 the QEMU target.
-
-See this here: https://github.com/Open-Source-Satellite/STM32UnitTestTemplate
 
 Contributing
 ============
