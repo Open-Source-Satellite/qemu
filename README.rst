@@ -112,6 +112,7 @@ In order to use the OSSAT fork of QEMU, you'll need to:
 * Run the following command line
 
 .. code-block:: shell
+  
   qemu-system-arm -kernel <name_of_elf_file>.elf -M stm32h753-nucleo -nographic -d guest_errors -D ./log_file.txt
 
 explaining this command line:
