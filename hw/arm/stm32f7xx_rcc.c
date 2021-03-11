@@ -759,7 +759,7 @@ static uint64_t stm32_rcc_readw(void *opaque, hwaddr offset)
 {
     Stm32f7xxRcc *s = (Stm32f7xxRcc *)opaque;
 
-    qemu_log("RCC: reading address 0x%lx\n", offset);
+    qemu_log("RCC: reading address 0x%" HWADDR_PRIx "\n", offset);
     
     switch (offset) {
         case RCC_CR_OFFSET:
@@ -806,7 +806,7 @@ static uint64_t stm32_rcc_readw(void *opaque, hwaddr offset)
         case RCC_PLLI2SCFGR_OFFSET:
             return stm32_rcc_RCC_PLLI2SCFGR_read(s);
         default:
-            qemu_log("WARNING: register offset 0x%lx is not implemented in the emulation\n", offset);
+            qemu_log("WARNING: register offset 0x%" HWADDR_PRIx " is not implemented in the emulation\n", offset);
             break;
     }
     return 0;
@@ -894,7 +894,7 @@ static void stm32_rcc_writew(void *opaque, hwaddr offset,
             stm32_rcc_RCC_PLLI2SCFGR_write(s, value, false);
             break;
         default:
-            qemu_log("RCC: Unimplemented: register offset 0x%lx\n", offset);
+            qemu_log("RCC: Unimplemented: register offset 0x%" HWADDR_PRIx "\n", offset);
             break;
     }
 }
@@ -906,7 +906,7 @@ static uint64_t stm32_rcc_read(void *opaque, hwaddr offset,
         case 4:
             return stm32_rcc_readw(opaque, offset);
         default:
-            qemu_log("Unimplemented: RCC read from register at offset 0x%lx\n", offset);
+            qemu_log("Unimplemented: RCC read from register at offset 0x%" HWADDR_PRIx "\n", offset);
             return 0;
     }
 }
