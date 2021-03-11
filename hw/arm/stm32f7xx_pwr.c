@@ -52,7 +52,7 @@ f7xx_pwr_read(void *arg, hwaddr addr, unsigned int size)
     int offset = addr & 0x3;
     uint32_t value;
 
-    qemu_log("PWR: reading register 0x%lx\n", addr);
+    qemu_log("PWR: reading register 0x%" HWADDR_PRIx "\n", addr);
 
     addr >>= 2; // shift down the address 
     // if this is request for the D3CR
@@ -84,7 +84,7 @@ f7xx_pwr_write(void *arg, hwaddr addr, uint64_t data, unsigned int size)
     STM32F7XXPwrState *s = arg;
     int offset = addr & 0x3;
 
-    qemu_log("PWR: writing address 0x%lx with data 0x%lx\n", addr, data);
+    qemu_log("PWR: writing address 0x%" HWADDR_PRIx "\n", addr);
     
     addr >>= 2;
     if (addr >= R_PWR_MAX) {
@@ -116,8 +116,6 @@ f7xx_pwr_write(void *arg, hwaddr addr, uint64_t data, unsigned int size)
     }
 
     // Save new value
-
-    qemu_log ("PWR: Commiting data 0x%lx to address 0x%lx", data, addr);
     s->regs[addr] = data;
 }
 
