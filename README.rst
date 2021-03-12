@@ -8,7 +8,8 @@ OSSAT `<https://opensourcesatellite.org>`_.
 We are trying to develop a spacecraft platform including all design
 artefacts (software, hardware, mechanical). We are pledging to
 issue this design freely and openly on the internet 1 year from the
-first spacecraft launch.
+first spacecraft launch. If you want to get involved... Get on over 
+to http://www.opensourcesatellite.org/register. 
 
 As part of this development, we are engaging developers to create
 on board software, in order to support this development, we figured
