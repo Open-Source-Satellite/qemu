@@ -199,7 +199,7 @@ Related Repos
 
 There is a Unit Test Template project that can be used to build code for the
 STM32H753ZI processor and run the code on either a real (Nucleo) target OR
-the QEMU target.
+the QEMU target. Find this here: https://github.com/Open-Source-Satellite/STM32UnitTestTemplate
 
 Contributing
 ============
