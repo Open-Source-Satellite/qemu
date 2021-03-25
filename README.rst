@@ -52,6 +52,8 @@ NOTE: On Linux: QEMU is shipped with many Linux distributions. Therefore,
 you need to replace the qemu-system-arm executable within the /usr/bin
 directory in order to use this OSSAT version.
 
+QEMU as a whole is released under the GNU General Public License,
+version 2. For full licensing details, consult the LICENSE file.
    
 Building
 ========
@@ -60,56 +62,110 @@ QEMU is multi-platform software intended to be buildable on all modern
 Linux platforms, OS-X, Win32 (via the Mingw64 toolchain) and a variety
 of other UNIX targets. The simple steps to build QEMU are:
 
+We support building and running qemu from Windows 10 and Ubuntu Linux 
+although Linux is def the least pain!
+
+Building On Linux (Debian, Ubuntu, Mint)
+========================================
+
+Install the following dependencies (these are also required to run QEMU):
+
+.. code-block:: shell
+
+sudo apt-get install git libglib2.0-dev libfdt-dev libpixman-1-dev zlib1g-dev
+
+Then, QEMU also advises the following additional dependencies:
+
+.. code-block:: shell
+
+sudo apt-get install git-email
+sudo apt-get install libaio-dev libbluetooth-dev libbrlapi-dev libbz2-dev
+sudo apt-get install libcap-dev libcap-ng-dev libcurl4-gnutls-dev libgtk-3-dev
+sudo apt-get install libibverbs-dev libjpeg8-dev libncurses5-dev libnuma-dev
+sudo apt-get install librbd-dev librdmacm-dev
+sudo apt-get install libsasl2-dev libsdl1.2-dev libseccomp-dev libsnappy-dev libssh2-1-dev
+sudo apt-get install libvde-dev libvdeplug-dev libvte-2.90-dev libxen-dev liblzo2-dev
+sudo apt-get install valgrind xfslibs-dev
+
+And, for newer versions of Debian/Ubuntu
+
+.. code-block:: shell
+
+sudo apt-get install libnfs-dev libiscsi-dev
+
+Then, build the code by navigating qemu/ directory where you cloned the code from Git and then run the following commands: 
 
 .. code-block:: shell
 
   mkdir build
   cd build
-  ../configure
+  ../configure --target-list=arm-softmmu
   make
 
-Additional information can also be found online via the QEMU website:
+Building On Windows 10
+======================
 
-* `<https://qemu.org/Hosts/Linux>`_
-* `<https://qemu.org/Hosts/Mac>`_
-* `<https://qemu.org/Hosts/W32>`_
+In order to build QEMU for Windows, you'll need to install a few Linux emulation environments (MINGW64 is also needed to run QEMU on Windows)
+Follow these steps:
+
+MSYS2 provides a convenient environment to produce native builds for W64.
+* Download and run the MSYS2 installer from msys2.org.
+* Run the MSYS2 console (Click start and search for MSYS)
+* As per the MSYS2 documentation, download the latest repository updates with:
+
+.. code-block:: shell
+
+pacman -Syu
+
+* If required, restart the MSYS2 console. Then update the remaining packages with:
+
+.. code-block:: shell
+
+pacman -Su
+
+* Next install the basic set of developer tools:
+
+.. code-block:: shell
+
+pacman -S base-devel mingw-w64-x86_64-toolchain git python ninja
+
+* Then install any required QEMU-specific packages. For a basic setup you can use:
+
+.. code-block:: shell
+
+pacman -S mingw-w64-x86_64-glib2 mingw64/mingw-w64-x86_64-gtk3 mingw64/mingw-w64-x86_64-SDL2 python-setuptools
+
+* Close the MSYS2 console.
+* Start mingw64.exe. (It should be in the MSYS install directory)
+
+.. code-block:: shell
+
+cd /mingw64/bin
+cp x86_64-w64-mingw32-gcc-ar.exe x86_64-w64-mingw32-ar.exe
+cp x86_64-w64-mingw32-gcvc-ranlib.exe x86_64-w64-mingw32-ranlib.exe
+cp windres.exe x86_64-w64-mingw32-windres.exe
+cp nm.exe x86_64-w64-mingw32-nm.exe
+cp objcopy.exe x86_64-w64-mingw32-objcopy.exe
+cd ~
 
 
-QEMU is a generic and open source machine & userspace emulator and
-virtualizer.
+- Finally build QEMU with:
 
-QEMU is capable of emulating a complete machine in software without any
-need for hardware virtualization support. By using dynamic translation,
-it achieves very good performance. QEMU can also integrate with the Xen
-and KVM hypervisors to provide emulated hardware while allowing the
-hypervisor to manage the CPU. With hypervisor support, QEMU can achieve
-near native performance for CPUs. When QEMU emulates CPUs directly it is
-capable of running operating systems made for one machine (e.g. an ARMv7
-board) on a different machine (e.g. an x86_64 PC board).
+.. code-block:: shell
 
-QEMU is also capable of providing userspace API virtualization for Linux
-and BSD kernel interfaces. This allows binaries compiled against one
-architecture ABI (e.g. the Linux PPC64 ABI) to be run on a host using a
-different architecture ABI (e.g. the Linux x86_64 ABI). This does not
-involve any hardware emulation, simply CPU and syscall emulation.
+cd qemu
+./configure --cross-prefix=x86_64-w64-mingw32- --enable-gtk --enable-sdl --target-list=arm-softmmu
+make
 
-QEMU aims to fit into a variety of use cases. It can be invoked directly
-by users wishing to have full control over its behaviour and settings.
-It also aims to facilitate integration into higher level management
-layers, by providing a stable command line interface and monitor API.
-It is commonly invoked indirectly via the libvirt library when using
-open source applications such as oVirt, OpenStack and virt-manager.
-
-QEMU as a whole is released under the GNU General Public License,
-version 2. For full licensing details, consult the LICENSE file.
-
-Using QEMU for OSSAT
-====================
+Running QEMU for OSSAT
+======================
 
 In order to use the OSSAT fork of QEMU, you'll need to:
 
 * Ensure that the executable qemu-system-arm from the release is in the
-  /usr/bin directory
+  /usr/bin directory (if running over Linux)
+* Under Windows, you need to run QEMU from the MINGW64 console andyou'll 
+  find the qemu-system-arm executable under the qemu/build directory
 * Run the following command line
 
 .. code-block:: shell
