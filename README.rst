@@ -72,26 +72,26 @@ Install the following dependencies (these are also required to run QEMU):
 
 .. code-block:: shell
 
-sudo apt-get install git libglib2.0-dev libfdt-dev libpixman-1-dev zlib1g-dev
+   sudo apt-get install git libglib2.0-dev libfdt-dev libpixman-1-dev zlib1g-dev
 
 Then, QEMU also advises the following additional dependencies:
 
 .. code-block:: shell
 
-sudo apt-get install git-email
-sudo apt-get install libaio-dev libbluetooth-dev libbrlapi-dev libbz2-dev
-sudo apt-get install libcap-dev libcap-ng-dev libcurl4-gnutls-dev libgtk-3-dev
-sudo apt-get install libibverbs-dev libjpeg8-dev libncurses5-dev libnuma-dev
-sudo apt-get install librbd-dev librdmacm-dev
-sudo apt-get install libsasl2-dev libsdl1.2-dev libseccomp-dev libsnappy-dev libssh2-1-dev
-sudo apt-get install libvde-dev libvdeplug-dev libvte-2.90-dev libxen-dev liblzo2-dev
-sudo apt-get install valgrind xfslibs-dev
+   sudo apt-get install git-email
+   sudo apt-get install libaio-dev libbluetooth-dev libbrlapi-dev libbz2-dev
+   sudo apt-get install libcap-dev libcap-ng-dev libcurl4-gnutls-dev libgtk-3-dev
+   sudo apt-get install libibverbs-dev libjpeg8-dev libncurses5-dev libnuma-dev
+   sudo apt-get install librbd-dev librdmacm-dev
+   sudo apt-get install libsasl2-dev libsdl1.2-dev libseccomp-dev libsnappy-dev libssh2-1-dev
+   sudo apt-get install libvde-dev libvdeplug-dev libvte-2.90-dev libxen-dev liblzo2-dev
+   sudo apt-get install valgrind xfslibs-dev
 
 And, for newer versions of Debian/Ubuntu
 
 .. code-block:: shell
 
-sudo apt-get install libnfs-dev libiscsi-dev
+   sudo apt-get install libnfs-dev libiscsi-dev
 
 Then, build the code by navigating qemu/ directory where you cloned the code from Git and then run the following commands: 
 
@@ -115,47 +115,47 @@ MSYS2 provides a convenient environment to produce native builds for W64.
 
 .. code-block:: shell
 
-pacman -Syu
+   pacman -Syu
 
 * If required, restart the MSYS2 console. Then update the remaining packages with:
 
 .. code-block:: shell
 
-pacman -Su
+   pacman -Su
 
 * Next install the basic set of developer tools:
 
 .. code-block:: shell
 
-pacman -S base-devel mingw-w64-x86_64-toolchain git python ninja
+   pacman -S base-devel mingw-w64-x86_64-toolchain git python ninja
 
 * Then install any required QEMU-specific packages. For a basic setup you can use:
 
 .. code-block:: shell
 
-pacman -S mingw-w64-x86_64-glib2 mingw64/mingw-w64-x86_64-gtk3 mingw64/mingw-w64-x86_64-SDL2 python-setuptools
+   pacman -S mingw-w64-x86_64-glib2 mingw64/mingw-w64-x86_64-gtk3 mingw64/mingw-w64-x86_64-SDL2 python-setuptools
 
 * Close the MSYS2 console.
 * Start mingw64.exe. (It should be in the MSYS install directory)
 
 .. code-block:: shell
 
-cd /mingw64/bin
-cp x86_64-w64-mingw32-gcc-ar.exe x86_64-w64-mingw32-ar.exe
-cp x86_64-w64-mingw32-gcvc-ranlib.exe x86_64-w64-mingw32-ranlib.exe
-cp windres.exe x86_64-w64-mingw32-windres.exe
-cp nm.exe x86_64-w64-mingw32-nm.exe
-cp objcopy.exe x86_64-w64-mingw32-objcopy.exe
-cd ~
+   cd /mingw64/bin
+   cp x86_64-w64-mingw32-gcc-ar.exe x86_64-w64-mingw32-ar.exe
+   cp x86_64-w64-mingw32-gcvc-ranlib.exe x86_64-w64-mingw32-ranlib.exe
+   cp windres.exe x86_64-w64-mingw32-windres.exe
+   cp nm.exe x86_64-w64-mingw32-nm.exe
+   cp objcopy.exe x86_64-w64-mingw32-objcopy.exe
+   cd ~
 
 
 - Finally build QEMU with:
 
 .. code-block:: shell
 
-cd qemu
-./configure --cross-prefix=x86_64-w64-mingw32- --enable-gtk --enable-sdl --target-list=arm-softmmu
-make
+   cd qemu
+   ./configure --cross-prefix=x86_64-w64-mingw32- --enable-gtk --enable-sdl --target-list=arm-softmmu
+   make
 
 Running QEMU for OSSAT
 ======================
